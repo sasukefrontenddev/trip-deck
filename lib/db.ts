@@ -79,6 +79,15 @@ export type Attraction = {
   notes?: string;
 };
 
+export type TripStoreName =
+  | 'bookings'
+  | 'documents'
+  | 'itinerary'
+  | 'checklist'
+  | 'expenses'
+  | 'hotels'
+  | 'attractions';
+
 interface TripDB extends DBSchema {
   bookings: { key: string; value: Booking };
   documents: { key: string; value: TripDocument };
@@ -111,12 +120,17 @@ const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdec
   },
 });
 
-export async function getAll<T extends keyof TripDB>(store: T) {
-  return (await dbPromise!)!.getAll(store) as Promise<TripDB[T]['value'][]>;
+export async function getAll<T extends TripStoreName>(store: T): Promise<TripDB[T]['value'][]> {
+  const db = await dbPromise!;
+  return db.getAll(store);
 }
-export async function put<T extends keyof TripDB>(store: T, value: TripDB[T]['value']) {
-  return (await dbPromise!)!.put(store, value);
+
+export async function put<T extends TripStoreName>(store: T, value: TripDB[T]['value']) {
+  const db = await dbPromise!;
+  return db.put(store, value);
 }
-export async function remove<T extends keyof TripDB>(store: T, key: string) {
-  return (await dbPromise!)!.delete(store, key);
+
+export async function remove<T extends TripStoreName>(store: T, key: string) {
+  const db = await dbPromise!;
+  return db.delete(store, key);
 }
