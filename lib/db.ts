@@ -3,6 +3,7 @@ import { openDB, type DBSchema } from 'idb';
 export const TRAVELERS = ['Usama', 'Gulraiz', 'Nabeel', 'Asad', 'Bakhtiar Taha', 'Waqar'] as const;
 export type TravelerName = (typeof TRAVELERS)[number];
 export type CountryName = 'Malaysia' | 'Singapore' | 'Indonesia';
+export type DayPeriod = 'Morning' | 'Afternoon' | 'Evening';
 
 export type Booking = {
   id: string;
@@ -12,6 +13,18 @@ export type Booking = {
   date: string;
   confirmation?: string;
   country: CountryName;
+  airline?: string;
+  flightNumber?: string;
+  departureAirport?: string;
+  departureAirportCode?: string;
+  arrivalAirport?: string;
+  arrivalAirportCode?: string;
+  arrivalTime?: string;
+  terminal?: string;
+  gate?: string;
+  status?: string;
+  providerLastChecked?: string;
+  reminderEnabled?: boolean;
 };
 
 export type TripDocument = {
@@ -33,6 +46,8 @@ export type ItineraryItem = {
   time: string;
   country: CountryName;
   notes?: string;
+  attractionId?: string;
+  period?: DayPeriod;
 };
 
 export type ChecklistItem = { id: string; title: string; category: string; done: boolean };
@@ -63,6 +78,8 @@ export type HotelStay = {
   confirmation?: string;
   phone?: string;
   notes?: string;
+  reminderEnabled?: boolean;
+  bookingProvider?: string;
 };
 
 export type Attraction = {
@@ -71,11 +88,30 @@ export type Attraction = {
   city: string;
   name: string;
   category: string;
+  description?: string;
+  adultPrice?: number;
+  childPrice?: number;
+  currency?: string;
+  aedAdult?: number;
+  aedChild?: number;
+  freeEntry?: boolean;
+  lastChecked?: string;
+  pricingNote?: string;
+  latitude?: number;
+  longitude?: number;
+  indoor?: boolean;
+  outdoor?: boolean;
+  familyFriendly?: boolean;
+  duration?: string;
+  bestTime?: string;
+  accessibility?: string;
+  address?: string;
   plannedDate?: string;
   estimatedCost?: number;
-  currency?: string;
   distanceFromHotelKm?: number;
   saved: boolean;
+  wishlist?: boolean;
+  visited?: boolean;
   notes?: string;
 };
 
@@ -98,7 +134,7 @@ interface TripDB extends DBSchema {
   attractions: { key: string; value: Attraction };
 }
 
-const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 3, {
+const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 5, {
   async upgrade(db, oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains('bookings')) db.createObjectStore('bookings', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
