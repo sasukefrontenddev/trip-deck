@@ -1,149 +1,309 @@
-# TripDeck
+<div align="center">
 
-Offline-first travel command center for Malaysia, Singapore and Indonesia.
+# ✦ TRIPDECK v7
 
-## Run
+### Your offline-first, AI-assisted travel operating system
+
+**Plan smarter. Move cheaper. Travel calmer. Keep everything in one place.**
+
+![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-Offline_First-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)
+![IndexedDB](https://img.shields.io/badge/IndexedDB-Local_Data-0B6E4F?style=for-the-badge)
+![Framer Motion](https://img.shields.io/badge/Framer_Motion-Animated-FF0055?style=for-the-badge&logo=framer)
+![Build](https://img.shields.io/badge/Release-v7_Smart-00D4FF?style=for-the-badge)
+
+**Malaysia · Singapore · Jakarta**
+
+</div>
+
+---
+
+## ⚡ What is TripDeck?
+
+TripDeck is a private, offline-capable travel command centre built for a multi-country journey across **Malaysia, Singapore and Indonesia**.
+
+It combines bookings, hotels, itinerary planning, expenses, documents, attractions, local transport guidance, weather-aware recommendations and smart trip automation inside one responsive PWA.
+
+The v7 build preserves the full original TripDeck experience and adds a new **Trip Intelligence** layer on top—without deleting existing tabs, records or workflows.
+
+---
+
+## 🧠 v7 — Trip Intelligence
+
+The new **Smart** tab turns stored trip data into practical, real-time travel guidance.
+
+| Intelligence module | What it does |
+|---|---|
+| **Travel Readiness Score** | Checks hotels, bookings, itinerary, checklist and saved attractions |
+| **Flight Countdown** | Surfaces the next flight and time remaining |
+| **Budget Health** | Compares spending against country budgets |
+| **Weather-Aware Planner** | Generates a day plan using Open-Meteo conditions |
+| **Travel Modes** | Switch between Balanced, Family and Couple planning styles |
+| **Commute Command Centre** | Connects saved hotels with attraction routing |
+| **Local Transport Advisor** | Suggests metro, bus, walking and affordable alternatives |
+| **Photo Missions** | Adds location-based travel photo challenges |
+| **Achievement System** | Unlocks travel badges from completed activity |
+| **Prayer & Wellbeing Tools** | Adds mosque, halal-food and prayer-break shortcuts |
+| **Receipt Capture** | Attaches receipt images and creates expenses directly |
+| **Shareable Trip Summary** | Uses Web Share or creates a copyable trip snapshot |
+| **Hidden Gems Engine** | Highlights mode-aware and lesser-known attractions |
+
+All Smart actions write into the existing IndexedDB itinerary and expense stores, keeping the app unified rather than creating isolated feature silos.
+
+---
+
+## 🗺️ Country Explorer
+
+Country Explorer is an additive experience connected to the original overview cards.
+
+### Included
+
+- Clickable country overview cards
+- Animated mobile explorer sheet
+- Expanded attraction datasets for Malaysia, Singapore and Jakarta
+- Local-currency ticket pricing with approximate AED values
+- Adult, child and free-entry labels
+- Last-checked dates and pricing disclaimers
+- Search and category filters
+- Wishlist, saved and visited states
+- Direct itinerary insertion
+- Morning, afternoon and evening day planning
+- Google Maps directions
+- Indoor/outdoor, family, duration, best-time and accessibility details
+- Nearby food, shopping, ATM, mosque, hospital and transport shortcuts
+- Responsive card layouts and animated transitions
+
+### Hotel-to-attraction intelligence
+
+TripDeck uses the hotel saved in **Stays**, or a hotel-type booking when no Stay address is available.
+
+It then:
+
+1. Geocodes the hotel address through OpenStreetMap Nominatim.
+2. Calculates road distance and driving duration through OSRM.
+3. Displays estimated public-transport duration and fare.
+4. Opens Google Maps for live transit routing.
+5. Suggests the cheapest practical commute option for the country.
+
+> Public routing APIs may be rate-limited and require an internet connection. Fares, ticket prices and journey times are estimates and should be verified before travel.
+
+---
+
+## 🚀 Core platform
+
+TripDeck keeps the complete original feature set intact:
+
+- Overview dashboard and country cards
+- Manual flight entry and optional live flight lookup
+- Hotel and activity booking records
+- Existing itinerary planner
+- Traveler document vault
+- Multi-currency expense tracking
+- Country budget management
+- Hotel and stay planner
+- Manual attraction creation
+- Readiness checklist
+- Emergency information card
+- JSON backup and export tools
+- Browser notification flow
+- PWA installation and offline app-shell support
+- Framer Motion animations
+- IndexedDB persistence for records and file blobs
+
+---
+
+## 🧭 Confirmed journey
+
+```text
+Dubai ──▶ Malaysia ──▶ Singapore ──▶ Jakarta ──▶ Dubai
+```
+
+| Milestone | Date |
+|---|---:|
+| Depart Dubai | 21 August 2026 |
+| Arrive Malaysia | 22 August 2026 |
+| Travel to Singapore | 26 August 2026 |
+| Travel to Indonesia | 30 August 2026 |
+| Return to Dubai | 3 September 2026 |
+
+The country split can be edited in `app/page.tsx`.
+
+---
+
+## 🛠️ Run locally
+
+### Requirements
+
+- Node.js 20+
+- npm
+- A modern Chromium, Firefox or Safari browser
+
+### Start the app
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000. For proper PWA installation and service-worker behavior in production, deploy over HTTPS.
+Open:
 
-## Included
+```text
+http://localhost:3000
+```
 
-- PWA manifest and service worker app-shell caching
-- Offline IndexedDB storage for itinerary, bookings and file blobs
-- Upload/open/delete document vault
-- Flight/hotel/activity booking records and confirmation numbers
-- Browser notification permission flow
-- Responsive animated UI with Framer Motion
-- Installable home-screen experience
+For production PWA installation and service-worker behaviour, deploy over HTTPS.
 
-## Gmail booking import (production integration)
+---
 
-The UI includes an import entry point, but Gmail OAuth is intentionally not hard-coded. Add a server-side OAuth flow and request the minimum Gmail scope needed, normally `gmail.readonly`. Search messages from airlines and hotel providers, parse structured fields, save normalized bookings to IndexedDB, then make the synced records available offline.
+## 🔐 Environment configuration
 
-Recommended production pieces:
+Create `.env.local` only for integrations you plan to enable.
 
-1. Auth.js or your own Google OAuth route.
-2. A server route that calls Gmail `users.messages.list`, `users.messages.get`, and attachment retrieval where required.
-3. A parser for common email formats plus manual review before saving.
-4. Encrypt sensitive cloud data and never expose OAuth tokens to IndexedDB.
-5. Schedule server-side reminders or push notifications; local browser timers alone are not reliable when an app is fully closed.
+```env
+AERODATABOX_API_KEY=your_rapidapi_key
+```
 
-## Privacy note
+### AeroDataBox
 
-Files in this starter remain only inside the current browser profile. Clearing site data deletes them. Add encrypted export/import backups before relying on it as the only copy of passports or visas.
-
-## Next.js workspace-root warning
-
-This project explicitly sets `turbopack.root` to the current project directory in `next.config.ts`. This prevents Next.js from treating a parent-folder lockfile (for example `~/package-lock.json`) as the workspace root.
-
-The included `tsconfig.json` also already contains the TypeScript settings Next.js 16 adds during the first development run.
-
-## Trip configuration
-
-This build is configured for **21 August through 3 September 2026** (14 days):
-
-- Malaysia: 21–26 August
-- Singapore: 26–29 August
-- Indonesia: 29 August–3 September
-
-The country split is editable in `app/page.tsx`.
-
-## Added travel tools
-
-- Mobile-first four-tab layout
-- Trip readiness checklist
-- Local expense tracker with multiple currencies
-- Offline emergency-number card
-- JSON trip backup/export
-- Date-limited itinerary and booking forms
-- Offline document vault
-- Flight and hotel booking records
-- Notification permission flow
-
-
-## Confirmed route dates
-
-- Depart Dubai: 21 August 2026
-- Arrive Malaysia: 22 August 2026
-- Travel to Singapore: 26 August 2026
-- Travel to Indonesia: 30 August 2026
-- Return to Dubai: 3 September 2026
-
-## Gmail booking import
-
-1. In Google Cloud Console, enable **Gmail API**.
-2. Configure the OAuth consent screen. While the app is in Testing, add every Gmail account that will connect as a test user.
-3. Create an OAuth 2.0 Client ID with application type **Web application**.
-4. Add authorized redirect URIs exactly, including protocol and domain:
-   - `http://localhost:3000/api/gmail/callback`
-   - `https://YOUR-VERCEL-DOMAIN.vercel.app/api/gmail/callback`
-   - Add any custom production domain separately.
-5. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.env.local` locally and to Vercel Project Settings > Environment Variables.
-6. Redeploy after changing Vercel environment variables.
-
-The app derives the OAuth callback from the current request origin, so `NEXT_PUBLIC_APP_URL` is no longer required. Gmail access is read-only. Tokens are stored in secure, HTTP-only cookies and imported booking summaries are saved to IndexedDB for offline access.
-
-## Manual booking and live flight lookup
-
-The Gmail integration has been removed. Flights are entered manually and saved in IndexedDB. The booking number/PNR is stored locally, while schedule information can optionally be fetched by flight number and local departure date.
-
-A public universal PNR lookup does not exist for arbitrary airline bookings. Reservation retrieval APIs from GDS and booking platforms generally require commercial access and only retrieve reservations created or managed through that provider. TripDeck therefore uses a safe split:
-
-- PNR/booking reference: manual, offline storage.
-- Flight schedule, airports, terminal, gate, and status: optional AeroDataBox lookup.
-- Hotel confirmation: manual, offline storage.
-- One-day reminders: browser notifications when TripDeck is opened or active within the 24-hour reminder window.
-
-### Configure AeroDataBox on Vercel
+Used for optional flight schedule, airport, terminal, gate and status lookup.
 
 1. Subscribe to AeroDataBox through RapidAPI.
 2. Copy the RapidAPI key.
-3. In Vercel open Project Settings > Environment Variables.
-4. Add `AERODATABOX_API_KEY`.
-5. Redeploy.
+3. Add `AERODATABOX_API_KEY` locally and in Vercel environment variables.
+4. Redeploy after changing production environment variables.
 
-Manual flight and hotel entry still works when the API is not configured or the device is offline.
+Manual flight and hotel entry remains available without the API.
 
-## Country Explorer additive upgrade
+---
 
-This build keeps the original TripDeck overview, bookings, itinerary, documents, expenses, stays, toolkit, flight lookup, hotel editing, and manual attraction features intact. Country Explorer is added as a separate tab and is also opened from the existing country cards.
+## ✈️ Booking architecture
 
-Compatibility fixes in this release:
+TripDeck intentionally separates private booking references from live schedule data:
 
-- IndexedDB schema version 5 upgrades databases created by versions 3 and 4 without deleting user data.
-- Legacy attraction records are merged with the expanded attraction dataset while retaining saved, wishlist, visited, planned-date, and note state.
-- Price rendering safely handles missing legacy fields.
-- Root hydration tolerates attributes injected by browser extensions.
-- The service worker cache is bumped and navigation uses network-first loading to avoid stale app shells during local development.
+- **PNR / booking reference:** entered manually and stored offline
+- **Flight schedule and status:** optionally fetched through AeroDataBox
+- **Hotel confirmation:** entered manually and stored offline
+- **Reminders:** triggered when TripDeck is open or active within the reminder window
 
-## Hotel-to-attraction travel estimates
+A universal public PNR lookup does not exist for arbitrary airline reservations, so TripDeck avoids pretending that unsupported access is available.
 
-Country Explorer uses the saved hotel in **Stays**, or a hotel-type booking when no Stay address is available. A complete street address is geocoded through OpenStreetMap Nominatim, and road distance/time is calculated through the public OSRM service. Public-transport time and fare are clearly labelled estimates based on the returned road distance and current local fare bands. The “Transit directions” button opens Google Maps for live routing.
+---
 
-Public routing services can be rate-limited and require an internet connection. Ticket prices, fares and travel times should be rechecked before travel.
+## 💾 Offline-first data model
 
-## Trip Intelligence (v7 additive upgrade)
+TripDeck stores core travel data locally using IndexedDB.
 
-The existing TripDeck screens and data remain unchanged. A new **Smart** tab adds:
+```text
+Browser
+├── Bookings
+├── Hotels / Stays
+├── Itinerary
+├── Attractions
+├── Expenses
+├── Documents
+├── Checklists
+├── Photo Missions
+└── Smart-state preferences
+```
 
-- Travel readiness score based on hotels, bookings, itinerary, checklist and saved attractions
-- Upcoming-flight countdown
-- Country budget-health dashboard
-- Weather-aware one-click day generation using Open-Meteo
-- Balanced, Family and Couple planning modes
-- Hotel/commute command centre linked to Country Explorer routing
-- Country-specific public-transport guidance
-- Photo missions persisted locally
-- Travel achievement badges
-- Mosque, prayer-time and halal-food shortcuts
-- Wellbeing/prayer break insertion into the itinerary
-- Receipt-photo attachment and direct expense creation
-- Web Share/copyable trip summaries
-- Hidden-gem and mode-aware attraction recommendations
+### Compatibility layer
 
-All new planning actions write to the existing IndexedDB itinerary and expense stores. No existing tabs or stored records are removed.
+The current schema upgrades older TripDeck databases without deleting user data.
+
+- Legacy attraction records are merged with the expanded dataset
+- Wishlist, saved, visited, notes and planned dates are retained
+- Missing legacy price fields are rendered safely
+- Browser-extension hydration attributes are tolerated
+- Service-worker navigation uses a network-first strategy to reduce stale local builds
+
+---
+
+## 📱 PWA behaviour
+
+TripDeck includes:
+
+- Web app manifest
+- Installable home-screen experience
+- Offline app-shell caching
+- Local IndexedDB persistence
+- Responsive mobile and desktop layouts
+- Service-worker cache versioning
+
+When testing a new build locally, stale service-worker files may remain active. If an older interface appears:
+
+1. Open DevTools.
+2. Go to **Application → Service Workers**.
+3. Click **Unregister**.
+4. Hard refresh the page.
+
+---
+
+## 🔒 Privacy and security
+
+TripDeck is designed around local-first storage.
+
+- Documents and records remain in the current browser profile
+- Clearing browser site data deletes local TripDeck data
+- Sensitive files should not rely on one browser profile as their only backup
+- OAuth tokens must never be stored in IndexedDB
+- Production cloud sync should use encryption and secure HTTP-only cookies
+
+Use the built-in JSON backup/export workflow regularly.
+
+---
+
+## 🧩 Project notes
+
+### Next.js workspace root
+
+`next.config.ts` explicitly sets `turbopack.root` to the current project directory. This prevents Next.js from treating a parent-folder lockfile as the workspace root.
+
+The included `tsconfig.json` already contains the TypeScript settings expected by Next.js 16.
+
+### Gmail integration status
+
+Gmail import is not active in the current runtime. The app uses manual booking entry instead.
+
+A future production integration should use a server-side OAuth flow, request the minimum required Gmail scope, parse booking emails with manual review, encrypt cloud data and keep OAuth tokens out of browser storage.
+
+---
+
+## 🛰️ External services
+
+| Service | Purpose | API key required |
+|---|---|---:|
+| Open-Meteo | Weather-aware planning | No |
+| OpenStreetMap Nominatim | Hotel geocoding | No |
+| OSRM | Road distance and duration | No |
+| Google Maps | Live route hand-off | No |
+| AeroDataBox via RapidAPI | Optional flight lookup | Yes |
+
+---
+
+## 🧪 Production checklist
+
+Before deploying:
+
+- [ ] Run `npm run build`
+- [ ] Configure `AERODATABOX_API_KEY` when required
+- [ ] Deploy over HTTPS
+- [ ] Test PWA installation
+- [ ] Verify IndexedDB migration with an older database
+- [ ] Test offline reload behaviour
+- [ ] Verify hotel geocoding and route fallback states
+- [ ] Confirm mobile tab overflow and bottom-sheet interactions
+- [ ] Recheck attraction prices and public-transport fares
+- [ ] Export a backup before major schema changes
+
+---
+
+<div align="center">
+
+## ✦ Built for the journey, not just the planning
+
+**TripDeck v7** transforms bookings, places, budgets and travel data into one calm, intelligent command centre.
+
+`OFFLINE-FIRST` · `SMART PLANNING` · `LOCAL DATA` · `MULTI-COUNTRY`
+
+</div>
