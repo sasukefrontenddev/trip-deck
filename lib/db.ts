@@ -11,6 +11,7 @@ export type Booking = {
   title: string;
   subtitle: string;
   date: string;
+  travelDate?: string;
   confirmation?: string;
   country: CountryName;
   airline?: string;
@@ -134,7 +135,7 @@ interface TripDB extends DBSchema {
   attractions: { key: string; value: Attraction };
 }
 
-const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 5, {
+const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 6, {
   async upgrade(db, oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains('bookings')) db.createObjectStore('bookings', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
@@ -150,6 +151,23 @@ const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdec
       while (cursor) {
         const doc = cursor.value as TripDocument & { traveler?: TravelerName; category?: TripDocument['category'] };
         await cursor.update({ ...doc, traveler: doc.traveler || 'Usama', category: doc.category || 'Other' });
+        cursor = await cursor.continue();
+      }
+    }
+
+    if (oldVersion < 6 && db.objectStoreNames.contains('bookings')) {
+      const store = transaction.objectStore('bookings');
+      let cursor = await store.openCursor();
+      while (cursor) {
+        const booking = cursor.value as Booking;
+        if (booking.type === 'flight') {
+          const normalized = booking.date?.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+          // Repair records produced by the previous UTC conversion bug at the
+          // start of this fixed 21 Aug–3 Sep 2026 itinerary.
+          if (normalized && normalized[1] < '2026-08-21') {
+            await cursor.update({ ...booking, date: `2026-08-21T${normalized[2]}`, travelDate: '2026-08-21' });
+          }
+        }
         cursor = await cursor.continue();
       }
     }
