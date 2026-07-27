@@ -63,6 +63,9 @@ export type Expense = {
   paidBy: TravelerName;
   date: string;
   notes?: string;
+  merchant?: string;
+  paymentMethod?: 'Cash' | 'Card' | 'Bank transfer' | 'E-wallet';
+  splitCount?: number;
 };
 
 export type HotelStay = {

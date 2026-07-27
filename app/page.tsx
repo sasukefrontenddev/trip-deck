@@ -12,11 +12,16 @@ import {
 import CountryExplorer from '@/components/CountryExplorer';
 import TripIntelligence from '@/components/TripIntelligence';
 import FoodGuide from '@/components/FoodGuide';
+import NearbyHalal from '@/components/NearbyHalal';
+import DateTimePicker from '@/components/DateTimePicker';
+import BusPlanner from '@/components/BusPlanner';
 import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
   ItineraryItem, put, remove, TRAVELERS, TravelerName, TripDocument
 } from '@/lib/db';
+
+const TRAVELER_COUNT_BY_COUNTRY: Record<CountryName, number> = { Malaysia: 5, Singapore: 6, Indonesia: 5 };
 
 const countries: { name: CountryName; code: string; dates: string; city: string; vibe: string }[] = [
   { name: 'Malaysia', code: 'MY', dates: '22–26 Aug · 4 nights', city: 'Kuala Lumpur', vibe: 'Food, skyline and culture' },
@@ -25,10 +30,10 @@ const countries: { name: CountryName; code: string; dates: string; city: string;
 ];
 
 const starterBookings: Booking[] = [
-  { id: 'b1', type: 'flight', title: 'Dubai → Malaysia', subtitle: 'Depart 21 Aug · arrive 22 Aug', date: '2026-08-21T22:00', confirmation: 'ADD PNR', country: 'Malaysia' },
+  { id: 'b1', type: 'flight', title: 'Sharjah → Malaysia', subtitle: 'Depart 21 Aug · arrive 22 Aug', date: '2026-08-21T22:00', confirmation: 'ADD PNR', country: 'Malaysia' },
   { id: 'b2', type: 'flight', title: 'Malaysia → Singapore', subtitle: 'Travel on 26 August', date: '2026-08-26T11:00', confirmation: 'ADD PNR', country: 'Singapore' },
   { id: 'b3', type: 'flight', title: 'Singapore → Indonesia', subtitle: 'Travel on 30 August', date: '2026-08-30T13:00', confirmation: 'ADD PNR', country: 'Indonesia' },
-  { id: 'b4', type: 'flight', title: 'Indonesia → Dubai', subtitle: 'Return on 3 September', date: '2026-09-03T18:00', confirmation: 'ADD PNR', country: 'Indonesia' },
+  { id: 'b4', type: 'flight', title: 'Indonesia → Sharjah', subtitle: 'Return on 3 September', date: '2026-09-03T18:00', confirmation: 'ADD PNR', country: 'Indonesia' },
 ];
 
 const starterHotels: HotelStay[] = countries.map((country, index) => ({
@@ -62,7 +67,7 @@ const starterChecklist: ChecklistItem[] = [
   { id: 'c6', title: 'Hotels and addresses confirmed', category: 'Stay', done: false },
 ];
 
-type Tab = 'overview' | 'smart' | 'explorer' | 'food' | 'bookings' | 'itinerary' | 'documents' | 'expenses' | 'stays' | 'toolkit';
+type Tab = 'overview' | 'smart' | 'explorer' | 'food' | 'nearby' | 'bus' | 'bookings' | 'itinerary' | 'documents' | 'expenses' | 'stays' | 'toolkit';
 const formatDate = (value: string) => new Date(`${value.slice(0, 10)}T00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short' });
 const normalizeWallClock = (value: string) => {
   const match = value?.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
@@ -92,6 +97,7 @@ export default function Home() {
   const [expenseCountry, setExpenseCountry] = useState<CountryName>('Malaysia');
   const [scrollProgress, setScrollProgress] = useState(0);
   const [explorerCountry, setExplorerCountry] = useState<CountryName>('Malaysia');
+  const [now, setNow] = useState(() => Date.now());
 
   async function refresh() {
     const [b, d, i, c, e, h, a] = await Promise.all([
@@ -117,11 +123,26 @@ export default function Home() {
     })();
     const sync = () => setOnline(navigator.onLine);
     const onScroll = () => { const max = document.documentElement.scrollHeight - innerHeight; setScrollProgress(max > 0 ? scrollY / max * 100 : 0); };
-    sync(); onScroll(); window.addEventListener('online', sync); window.addEventListener('offline', sync); window.addEventListener('scroll', onScroll, { passive: true });
-    return () => { window.removeEventListener('online', sync); window.removeEventListener('offline', sync); window.removeEventListener('scroll', onScroll); };
+    sync(); onScroll();
+    const countdownTimer = window.setInterval(() => setNow(Date.now()), 1000);
+    window.addEventListener('online', sync); window.addEventListener('offline', sync); window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.clearInterval(countdownTimer); window.removeEventListener('online', sync); window.removeEventListener('offline', sync); window.removeEventListener('scroll', onScroll); };
   }, []);
 
-  const nextBooking = useMemo(() => [...bookings].sort((a, b) => +new Date(a.date) - +new Date(b.date))[0], [bookings]);
+  const nextBooking = useMemo(() => {
+    const upcomingFlights = bookings.filter(b => b.type === 'flight' && +new Date(b.date) >= now);
+    const detailedFlights = upcomingFlights.filter(b => b.flightNumber || b.departureAirportCode || b.arrivalAirportCode || b.airline);
+    return [...(detailedFlights.length ? detailedFlights : upcomingFlights)].sort((a, b) => +new Date(a.date) - +new Date(b.date))[0];
+  }, [bookings, now]);
+  const flightCountdown = useMemo(() => {
+    if (!nextBooking) return null;
+    const remaining = Math.max(0, +new Date(nextBooking.date) - now);
+    const days = Math.floor(remaining / 86_400_000);
+    const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+    const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+    const seconds = Math.floor((remaining % 60_000) / 1_000);
+    return { days, hours, minutes, seconds, departed: remaining === 0 };
+  }, [nextBooking, now]);
   const prepDone = checklist.filter(i => i.done).length;
   const selectedDocs = documents.filter(d => d.traveler === traveler);
   const countryExpenses = expenses.filter(e => e.country === expenseCountry);
@@ -170,16 +191,23 @@ export default function Home() {
     <header className="topbar glass"><div className="brand-lockup"><img src="/tripdeck-logo.svg" alt="TripDeck"/><div><span className="eyebrow">GROUP TRAVEL OS</span><h1>TripDeck<span>.</span></h1></div></div><div className={`status ${online ? 'online' : 'offline'}`}><WifiIcon/>{online ? 'Online' : 'Offline · local mode'}</div></header>
 
     <section className="hero"><motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}>
-      <span className="eyebrow">21 AUGUST — 3 SEPTEMBER 2026</span><h2>Six travelers.<br/><em>Zero chaos.</em></h2>
+      <span className="eyebrow">21 AUGUST — 3 SEPTEMBER 2026</span><h2>One journey.<br/><em>Zero chaos.</em></h2>
       <p>Documents, detailed country budgets, hotels, airport transfers, attractions and every booking—available offline.</p>
-      <div className="date-pill"><CalendarDaysIcon/><b>14 days</b><span>Dubai → Malaysia → Singapore → Indonesia → Dubai</span></div>
+      <div className="date-pill"><CalendarDaysIcon/><b>14 days</b><span>Sharjah → Malaysia → Singapore → Indonesia → Sharjah</span></div>
       <div className="hero-actions"><button className="primary" onClick={() => setShowAdd(true)}><PlusIcon/> Add trip item</button><button className="secondary" onClick={() => setTab('documents')}><FolderIcon/> Traveler folders</button></div>
     </motion.div>
     <motion.div className="boarding-pass" initial={{ opacity: 0, rotate: 4, x: 40 }} animate={{ opacity: 1, rotate: -2, x: 0 }} whileHover={{ rotate: 0, scale: 1.02 }}>
-      <div className="pass-top"><span>NEXT ROUTE</span><PaperAirplaneIcon/></div><div className="route"><strong>{nextBooking?.title || 'Dubai → Malaysia'}</strong><small>{nextBooking?.subtitle}</small></div><div className="pass-meta"><div><span>TRAVELERS</span><b>6</b></div><div><span>CONFIRMATION</span><b>{nextBooking?.confirmation || 'ADD PNR'}</b></div></div><div className="barcode">|||| ||| || |||| | ||| ||||||</div>
+      <div className="pass-notch pass-notch-left"/><div className="pass-notch pass-notch-right"/>
+      <div className="pass-header"><div className="pass-brand"><span>TRIPDECK AIR</span><b>BOARDING PASS</b></div><div className="pass-flight-badge"><PaperAirplaneIcon/><span>{nextBooking?.flightNumber || 'NEXT FLIGHT'}</span></div></div>
+      <div className="pass-route-row"><div className="pass-airport"><b>{nextBooking?.departureAirportCode || nextBooking?.title?.split('→')[0]?.trim().slice(0,3).toUpperCase() || 'SHJ'}</b><span>{nextBooking?.departureAirport || nextBooking?.title?.split('→')[0]?.trim() || 'Sharjah'}</span></div><div className="pass-route-line"><i/><PaperAirplaneIcon/><i/></div><div className="pass-airport align-right"><b>{nextBooking?.arrivalAirportCode || nextBooking?.title?.split('→')[1]?.trim().slice(0,3).toUpperCase() || 'KUL'}</b><span>{nextBooking?.arrivalAirport || nextBooking?.title?.split('→')[1]?.trim() || 'Malaysia'}</span></div></div>
+      <div className="pass-date-line"><span>{nextBooking?.airline || 'Airline pending'}</span><b>{nextBooking ? formatWallClock(nextBooking.date) : '21 Aug 2026, 10:00 PM'}</b></div>
+      <div className="pass-countdown"><span>DEPARTURE COUNTDOWN</span>{flightCountdown ? <div className="countdown-grid"><div><b>{String(flightCountdown.days).padStart(2,'0')}</b><small>DAYS</small></div><div><b>{String(flightCountdown.hours).padStart(2,'0')}</b><small>HRS</small></div><div><b>{String(flightCountdown.minutes).padStart(2,'0')}</b><small>MIN</small></div><div><b>{String(flightCountdown.seconds).padStart(2,'0')}</b><small>SEC</small></div></div> : <strong>Add a flight to start countdown</strong>}</div>
+      <div className="pass-divider"/>
+      <div className="pass-meta detailed"><div><span>PASSENGERS</span><b>{nextBooking ? TRAVELER_COUNT_BY_COUNTRY[nextBooking.country] : 5}</b></div><div><span>PNR</span><b>{nextBooking?.confirmation || 'ADD PNR'}</b></div><div><span>TERMINAL</span><b>{nextBooking?.terminal || '—'}</b></div><div><span>GATE</span><b>{nextBooking?.gate || '—'}</b></div><div><span>STATUS</span><b>{nextBooking?.status || 'SCHEDULED'}</b></div></div>
+      <div className="pass-footer"><div className="barcode">|||| ||| || |||| | ||| ||||||</div><span>{nextBooking?.arrivalTime ? `Arrival ${formatWallClock(nextBooking.arrivalTime)}` : 'Save flight details to complete this pass'}</span></div>
     </motion.div></section>
 
-    <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'food', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
+    <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'food', 'nearby', 'bus', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
 
     <AnimatePresence mode="wait">
       {tab === 'overview' && <motion.section className="content" key="overview" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -193,6 +221,8 @@ export default function Home() {
       {tab === 'smart' && <motion.section className="content" key="smart" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><TripIntelligence attractions={attractions} bookings={bookings} hotels={hotels} itinerary={items} expenses={expenses} checklist={checklist} onRefresh={refresh} onOpenExplorer={(country) => { setExplorerCountry(country); setTab('explorer'); }} onOpenItinerary={() => setTab('itinerary')}/></motion.section>}
       {tab === 'explorer' && <motion.section className="content" key="explorer" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><CountryExplorer attractions={attractions} hotels={hotels} bookings={bookings} initialCountry={explorerCountry} onRefresh={refresh} onOpenItinerary={() => setTab('itinerary')}/></motion.section>}
       {tab === 'food' && <motion.section className="content" key="food" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><FoodGuide hotels={hotels} bookings={bookings}/></motion.section>}
+      {tab === 'nearby' && <motion.section className="content" key="nearby" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><NearbyHalal/></motion.section>}
+      {tab === 'bus' && <motion.section className="content" key="bus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><BusPlanner hotels={hotels}/></motion.section>}
 
       {tab === 'itinerary' && <motion.section className="content" key="itinerary" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">DAY BY DAY</span><h3>Group itinerary</h3></div><button className="primary small" onClick={() => setShowAdd(true)}><PlusIcon/> Add</button></div>{items.length === 0 ? <Empty icon={<CalendarDaysIcon/>} title="No plans yet" text="Add activities, meals, transfers and reservations."/> : <div className="timeline">{[...items].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).map(item => <div className="timeline-row" key={item.id}><div className="time"><b>{formatDate(item.date)}</b><span>{item.time}</span></div><div className="dot"/><div className="timeline-card"><span>{item.country}</span><h4>{item.title}</h4><p>{item.location}</p><small>{item.notes}</small></div></div>)}</div>}</motion.section>}
 
@@ -203,11 +233,7 @@ export default function Home() {
         {selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="Upload passport copies, visas, tickets, insurance and hotel vouchers."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB</span></div><div className="doc-actions"><button onClick={() => { const u = URL.createObjectURL(doc.blob); window.open(u, '_blank'); }}>Open</button><button onClick={async () => { await remove('documents', doc.id); await refresh(); }}><TrashIcon/></button></div></article>)}</div>}
       </motion.section>}
 
-      {tab === 'expenses' && <motion.section className="content" key="expenses" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">COUNTRYWISE BUDGETS</span><h3>Detailed expenses</h3></div></div>
-        <div className="country-switch">{countries.map(c => <button key={c.code} className={expenseCountry === c.name ? 'active' : ''} onClick={() => setExpenseCountry(c.name)}>{c.code}<span>{c.name}</span></button>)}</div>
-        <div className="expense-layout"><section className="panel glass"><div className="panel-title"><h3>Add expense</h3><CurrencyDollarIcon/></div><ExpenseForm country={expenseCountry} onSaved={refresh}/></section><section className="panel glass"><div className="panel-title"><h3>{expenseCountry} breakdown</h3><BanknotesIcon/></div><div className="category-grid">{categoryTotals.length ? categoryTotals.map(([category, amount]) => <div key={category}><span>{category}</span><b>{amount.toFixed(2)}</b></div>) : <p className="muted">No expenses logged yet.</p>}</div></section></div>
-        <div className="expense-table">{countryExpenses.map(e => <div className="expense-row" key={e.id}><div><b>{e.title}</b><span>{e.category} · paid by {e.paidBy} · {formatDate(e.date)}</span>{e.notes && <small>{e.notes}</small>}</div><strong>{e.currency} {e.amount.toFixed(2)}</strong><button onClick={async () => { await remove('expenses', e.id); await refresh(); }}><TrashIcon/></button></div>)}</div>
-      </motion.section>}
+      {tab === 'expenses' && <motion.section className="content" key="expenses" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><ExpenseCenter country={expenseCountry} setCountry={setExpenseCountry} expenses={expenses} onRefresh={refresh}/></motion.section>}
 
       {tab === 'stays' && <motion.section className="content" key="stays" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">HOTELS & THINGS TO DO</span><h3>Stay planner</h3></div></div>
         <div className="hotel-grid">{hotels.map(hotel => <HotelCard key={hotel.id} hotel={hotel} onSaved={refresh}/>)}</div>
@@ -236,11 +262,28 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 function Stat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) { return <div className="stat glass">{icon}<div><b>{value}</b><span>{label}</span></div></div>; }
 function Empty({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="empty">{icon}<h4>{title}</h4><p>{text}</p></div>; }
 
-function ExpenseForm({ country, onSaved }: { country: CountryName; onSaved: () => void }) {
-  async function submit(formData: FormData) {
-    await put('expenses', { id: crypto.randomUUID(), title: String(formData.get('title')), amount: Number(formData.get('amount')), currency: String(formData.get('currency')), country, category: String(formData.get('category')) as Expense['category'], paidBy: String(formData.get('paidBy')) as TravelerName, date: String(formData.get('date')), notes: String(formData.get('notes') || '') }); onSaved();
-  }
-  return <form className="expense-form" action={submit}><input name="title" required placeholder="Taxi, dinner, tickets..."/><div><input name="amount" required min="0" step="0.01" type="number" placeholder="Amount"/><select name="currency"><option>{country === 'Malaysia' ? 'MYR' : country === 'Singapore' ? 'SGD' : 'IDR'}</option><option>AED</option><option>USD</option></select></div><div><select name="category"><option>Food</option><option>Transport</option><option>Hotel</option><option>Attraction</option><option>Shopping</option><option>Flights</option><option>Other</option></select><select name="paidBy">{TRAVELERS.map(t => <option key={t}>{t}</option>)}</select></div><input name="date" type="date" min="2026-08-21" max="2026-09-03" required/><textarea name="notes" placeholder="Split details or notes"/><button className="primary small" type="submit"><PlusIcon/> Log expense</button></form>;
+function ExpenseCenter({country,setCountry,expenses,onRefresh}:{country:CountryName;setCountry:(c:CountryName)=>void;expenses:Expense[];onRefresh:()=>Promise<void>}) {
+ const rows=expenses.filter(e=>e.country===country); const currency=country==='Malaysia'?'MYR':country==='Singapore'?'SGD':'IDR';
+ const [budget,setBudget]=useState(0); const [search,setSearch]=useState(''); const [category,setCategory]=useState('All');
+ useEffect(()=>{setBudget(Number(localStorage.getItem(`tripdeck-budget-${country}`)||0))},[country]);
+ const travelerCount=TRAVELER_COUNT_BY_COUNTRY[country];
+ const total=rows.reduce((a,e)=>a+e.amount,0), remaining=budget-total, perPerson=travelerCount ? total/travelerCount : 0;
+ const categories=Object.entries(rows.reduce<Record<string,number>>((a,e)=>(a[e.category]=(a[e.category]||0)+e.amount,a),{})).sort((a,b)=>b[1]-a[1]);
+ const payers=TRAVELERS.map(name=>({name,total:rows.filter(e=>e.paidBy===name).reduce((a,e)=>a+e.amount,0)}));
+ const filtered=rows.filter(e=>(category==='All'||e.category===category)&&`${e.title} ${e.merchant||''} ${e.notes||''}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+ return <div className="expense-center"><div className="section-heading"><div><span className="eyebrow">COUNTRYWISE BUDGET CONTROL</span><h3>Expenses & group settlement</h3><p className="muted">Track spending, budgets, payment methods and who paid.</p></div><label className="budget-control"><span>{country} trip budget</span><div><b>{currency}</b><input type="number" min="0" value={budget||''} placeholder="Set budget" onChange={e=>{const v=Number(e.target.value);setBudget(v);localStorage.setItem(`tripdeck-budget-${country}`,String(v))}}/></div></label></div>
+ <div className="country-switch">{countries.map(c=><button key={c.code} className={country===c.name?'active':''} onClick={()=>setCountry(c.name)}>{c.code}<span>{c.name}</span></button>)}</div>
+ <div className="expense-kpis"><div className="glass"><span>Total spent</span><b>{currency} {total.toLocaleString(undefined,{maximumFractionDigits:2})}</b><small>{rows.length} transactions</small></div><div className="glass"><span>Budget remaining</span><b className={remaining<0?'over':''}>{budget?`${currency} ${remaining.toLocaleString(undefined,{maximumFractionDigits:2})}`:'Set a budget'}</b><small>{budget?`${Math.min(100,Math.round(total/budget*100))}% used`:'Add a target above'}</small></div><div className="glass"><span>Average per traveler</span><b>{currency} {perPerson.toLocaleString(undefined,{maximumFractionDigits:2})}</b><small>{travelerCount} travelers in {country}</small></div><div className="glass"><span>Largest category</span><b>{categories[0]?.[0]||'No data'}</b><small>{categories[0]?`${currency} ${categories[0][1].toLocaleString()}`:'Start logging expenses'}</small></div></div>
+ {budget>0&&<div className="budget-progress"><span style={{width:`${Math.min(100,total/budget*100)}%`}}/></div>}
+ <div className="expense-layout upgraded"><section className="panel glass"><div className="panel-title"><h3>Log an expense</h3><CurrencyDollarIcon/></div><ExpenseForm country={country} onSaved={onRefresh}/></section><section className="panel glass"><div className="panel-title"><h3>Category breakdown</h3><BanknotesIcon/></div><div className="category-bars">{categories.length?categories.map(([name,amount])=><div key={name}><div><span>{name}</span><b>{currency} {amount.toLocaleString()}</b></div><i><span style={{width:`${total?amount/total*100:0}%`}}/></i></div>):<p className="muted">No expenses logged yet.</p>}</div><h4 className="settlement-title">Paid by</h4><div className="payer-grid">{payers.map(p=><div key={p.name}><span>{p.name}</span><b>{currency} {p.total.toLocaleString()}</b></div>)}</div></section></div>
+ <div className="expense-toolbar"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search expense, merchant or note…"/><select value={category} onChange={e=>setCategory(e.target.value)}><option>All</option><option>Food</option><option>Transport</option><option>Hotel</option><option>Attraction</option><option>Shopping</option><option>Flights</option><option>Other</option></select></div>
+ <div className="expense-table modern">{filtered.length?filtered.map(e=><div className="expense-row" key={e.id}><div className="expense-category-icon">{e.category.slice(0,1)}</div><div><b>{e.title}</b><span>{e.category} · {e.merchant||'No merchant'} · paid by {e.paidBy}</span><small>{formatDate(e.date)}{e.paymentMethod?` · ${e.paymentMethod}`:''}{e.splitCount?` · split ${e.splitCount} ways`:''}</small>{e.notes&&<small>{e.notes}</small>}</div><strong>{e.currency} {e.amount.toFixed(2)}</strong><button onClick={async()=>{await remove('expenses',e.id);await onRefresh()}}><TrashIcon/></button></div>):<Empty icon={<BanknotesIcon/>} title="No matching expenses" text="Log your first expense or clear the filters."/>}</div></div>
+}
+
+function ExpenseForm({ country, onSaved }: { country: CountryName; onSaved: () => Promise<void> }) {
+ const travelerCount = TRAVELER_COUNT_BY_COUNTRY[country];
+ async function submit(formData: FormData) { await put('expenses', { id: crypto.randomUUID(), title: String(formData.get('title')), amount: Number(formData.get('amount')), currency: String(formData.get('currency')), country, category: String(formData.get('category')) as Expense['category'], paidBy: String(formData.get('paidBy')) as TravelerName, date: String(formData.get('date')), notes: String(formData.get('notes') || ''), merchant:String(formData.get('merchant')||''), paymentMethod:String(formData.get('paymentMethod')||'Card') as Expense['paymentMethod'], splitCount:Number(formData.get('splitCount')||1) }); onSaved(); }
+ return <form className="expense-form detailed" action={submit}><div className="field-pair"><input name="title" required placeholder="What was purchased?"/><input name="merchant" placeholder="Merchant / provider"/></div><div className="field-pair"><input name="amount" required min="0" step="0.01" type="number" placeholder="Amount"/><select name="currency"><option>{country==='Malaysia'?'MYR':country==='Singapore'?'SGD':'IDR'}</option><option>AED</option><option>USD</option></select></div><div className="field-pair"><select name="category"><option>Food</option><option>Transport</option><option>Hotel</option><option>Attraction</option><option>Shopping</option><option>Flights</option><option>Other</option></select><select name="paidBy">{TRAVELERS.map(t=><option key={t}>{t}</option>)}</select></div><div className="field-pair"><select name="paymentMethod"><option>Card</option><option>Cash</option><option>Bank transfer</option><option>E-wallet</option></select><select name="splitCount" key={country} defaultValue={String(travelerCount)}><option value="1">Personal expense</option>{Array.from({length: travelerCount - 1}, (_, i) => i + 2).map(n=><option key={n} value={n}>Split {n} ways</option>)}</select></div><DateTimePicker name="date" min="2026-08-21" max="2026-09-03" required/><textarea name="notes" placeholder="Receipt reference, split details or notes"/><button className="primary small" type="submit"><PlusIcon/> Save expense</button></form>;
 }
 
 function HotelCard({ hotel, onSaved }: { hotel: HotelStay; onSaved: () => void }) {
@@ -258,7 +301,7 @@ function HotelCard({ hotel, onSaved }: { hotel: HotelStay; onSaved: () => void }
 
 function AttractionForm({ onSaved }: { onSaved: () => void }) {
   async function submit(formData: FormData) { await put('attractions', { id: crypto.randomUUID(), country: String(formData.get('country')) as CountryName, city: String(formData.get('city')), name: String(formData.get('name')), category: String(formData.get('category')), plannedDate: String(formData.get('plannedDate') || ''), saved: true, notes: String(formData.get('notes') || '') }); onSaved(); }
-  return <form className="attraction-form glass" action={submit}><input name="name" required placeholder="Add attraction or restaurant"/><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><input name="city" required placeholder="City"/><input name="category" placeholder="Landmark, food, beach..."/><input name="plannedDate" type="date" min="2026-08-21" max="2026-09-03"/><button className="primary small"><PlusIcon/> Add place</button></form>;
+  return <form className="attraction-form glass" action={submit}><input name="name" required placeholder="Add attraction or restaurant"/><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><input name="city" required placeholder="City"/><input name="category" placeholder="Landmark, food, beach..."/><DateTimePicker name="plannedDate" min="2026-08-21" max="2026-09-03"/><button className="primary small"><PlusIcon/> Add place</button></form>;
 }
 
 function FlightForm({ online, onSaved }: { online: boolean; onSaved: () => void }) {
@@ -284,11 +327,11 @@ function FlightForm({ online, onSaved }: { online: boolean; onSaved: () => void 
     const departure = `${travelDate}T${departureTime}`;
     await put('bookings', { id: crypto.randomUUID(), type:'flight', title:`${String(formData.get('originCode')).toUpperCase()} → ${String(formData.get('destinationCode')).toUpperCase()}`, subtitle:`${String(formData.get('airline') || '')} ${String(formData.get('flightNumber'))}`.trim(), date: departure, travelDate, confirmation:String(formData.get('confirmation') || ''), country:String(formData.get('country')) as CountryName, airline:String(formData.get('airline') || f?.airline?.name || ''), flightNumber:String(formData.get('flightNumber')), departureAirport:String(formData.get('departureAirport') || f?.departure?.airport?.name || ''), departureAirportCode:String(formData.get('originCode') || f?.departure?.airport?.iata || ''), arrivalAirport:String(formData.get('arrivalAirport') || f?.arrival?.airport?.name || ''), arrivalAirportCode:String(formData.get('destinationCode') || f?.arrival?.airport?.iata || ''), arrivalTime:normalizeWallClock(f?.arrival?.scheduledTime?.local || String(formData.get('arrivalTime') || '')), terminal:f?.departure?.terminal || '', gate:f?.departure?.gate || '', status:f?.status || '', providerLastChecked:f ? new Date().toISOString() : undefined, reminderEnabled:true }); setLookup(null); setMessage('Flight saved offline with a one-day reminder.'); onSaved();
   }
-  return <form className="flight-form glass" action={submit} ref={form => { if (form) (form as any).__lookup = () => fetchFlight(form); }}><div className="panel-title"><h3>Add flight</h3><PaperAirplaneIcon/></div><div className="flight-form-grid"><input name="flightNumber" required placeholder="Flight number e.g. EK342"/><input name="travelDate" type="date" min="2026-08-21" max="2026-09-03" required/><button type="button" className="secondary" disabled={!online || loading} onClick={e=>fetchFlight(e.currentTarget.form!)}>{loading?'Checking…':'Fetch schedule'}</button><input name="confirmation" placeholder="Booking number / PNR"/><input name="airline" placeholder="Airline"/><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><input name="originCode" required placeholder="Origin IATA e.g. DXB"/><input name="departureAirport" placeholder="Departure airport"/><input name="departureTime" type="datetime-local" required/><input name="destinationCode" required placeholder="Destination IATA e.g. KUL"/><input name="arrivalAirport" placeholder="Arrival airport"/><input name="arrivalTime" type="datetime-local"/></div>{message&&<div className="notice">{message}</div>}{lookup&&<div className="lookup-preview"><CheckCircleIcon/><div><b>Schedule loaded</b><span>{String((lookup as any).departure?.airport?.name || '')} → {String((lookup as any).arrival?.airport?.name || '')}</span></div></div>}<button className="primary"><PlusIcon/> Save flight & reminder</button></form>;
+  return <form className="flight-form glass" action={submit} ref={form => { if (form) (form as any).__lookup = () => fetchFlight(form); }}><div className="panel-title"><h3>Add flight</h3><PaperAirplaneIcon/></div><div className="flight-form-grid"><input name="flightNumber" required placeholder="Flight number e.g. EK342"/><DateTimePicker name="travelDate" min="2026-08-21" max="2026-09-03" required/><button type="button" className="secondary" disabled={!online || loading} onClick={e=>fetchFlight(e.currentTarget.form!)}>{loading?'Checking…':'Fetch schedule'}</button><input name="confirmation" placeholder="Booking number / PNR"/><input name="airline" placeholder="Airline"/><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><input name="originCode" required placeholder="Origin IATA e.g. DXB"/><input name="departureAirport" placeholder="Departure airport"/><DateTimePicker name="departureTime" mode="datetime" required/><input name="destinationCode" required placeholder="Destination IATA e.g. KUL"/><input name="arrivalAirport" placeholder="Arrival airport"/><DateTimePicker name="arrivalTime" mode="datetime"/></div>{message&&<div className="notice">{message}</div>}{lookup&&<div className="lookup-preview"><CheckCircleIcon/><div><b>Schedule loaded</b><span>{String((lookup as any).departure?.airport?.name || '')} → {String((lookup as any).arrival?.airport?.name || '')}</span></div></div>}<button className="primary"><PlusIcon/> Save flight & reminder</button></form>;
 }
 
 function AddModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [kind, setKind] = useState<'itinerary' | 'booking'>('itinerary');
   async function submit(formData: FormData) { const id = crypto.randomUUID(); if (kind === 'itinerary') await put('itinerary', { id, title: String(formData.get('title')), location: String(formData.get('location')), date: String(formData.get('date')), time: String(formData.get('time')), country: String(formData.get('country')) as CountryName, notes: String(formData.get('notes') || '') }); else await put('bookings', { id, type: String(formData.get('type')) as Booking['type'], title: String(formData.get('title')), subtitle: String(formData.get('location')), date: String(formData.get('date')), country: String(formData.get('country')) as CountryName, confirmation: String(formData.get('confirmation') || '') }); onSaved(); }
-  return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}><motion.form className="modal glass" action={submit} onMouseDown={e => e.stopPropagation()}><div className="panel-title"><h3>Add to trip</h3><button type="button" onClick={onClose}>×</button></div><div className="segmented"><button type="button" className={kind === 'itinerary' ? 'active' : ''} onClick={() => setKind('itinerary')}>Plan</button><button type="button" className={kind === 'booking' ? 'active' : ''} onClick={() => setKind('booking')}>Booking</button></div>{kind === 'booking' && <select name="type"><option value="flight">Flight</option><option value="hotel">Hotel</option><option value="transfer">Transfer</option><option value="activity">Activity</option></select>}<input name="title" required placeholder="Title"/><input name="location" required placeholder="Location or details"/><div className="form-row"><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><input name="date" type="date" min="2026-08-21" max="2026-09-03" required/></div>{kind === 'itinerary' ? <input name="time" type="time" required/> : <input name="confirmation" placeholder="Booking number"/>}<textarea name="notes" placeholder="Notes"/><button className="primary">Save offline</button></motion.form></motion.div>;
+  return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}><motion.form className="modal glass" action={submit} onMouseDown={e => e.stopPropagation()}><div className="panel-title"><h3>Add to trip</h3><button type="button" onClick={onClose}>×</button></div><div className="segmented"><button type="button" className={kind === 'itinerary' ? 'active' : ''} onClick={() => setKind('itinerary')}>Plan</button><button type="button" className={kind === 'booking' ? 'active' : ''} onClick={() => setKind('booking')}>Booking</button></div>{kind === 'booking' && <select name="type"><option value="flight">Flight</option><option value="hotel">Hotel</option><option value="transfer">Transfer</option><option value="activity">Activity</option></select>}<input name="title" required placeholder="Title"/><input name="location" required placeholder="Location or details"/><div className="form-row"><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><DateTimePicker name="date" min="2026-08-21" max="2026-09-03" required/></div>{kind === 'itinerary' ? <DateTimePicker name="time" mode="time" required/> : <input name="confirmation" placeholder="Booking number"/>}<textarea name="notes" placeholder="Notes"/><button className="primary">Save offline</button></motion.form></motion.div>;
 }

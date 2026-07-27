@@ -1,5 +1,6 @@
 'use client';
 
+import DateTimePicker from '@/components/DateTimePicker';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -143,7 +144,7 @@ export default function TripIntelligence(props: Props) {
   return <section className="intel-shell">
     <div className="intel-hero glass">
       <div><span className="eyebrow">TRIP INTELLIGENCE</span><h2>Your travel operating system</h2><p>Live context, smart planning and trip readiness—built on top of your existing TripDeck data.</p></div>
-      <div className="intel-hero-actions"><select value={country} onChange={e=>setCountry(e.target.value as CountryName)}><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><button className="secondary" onClick={shareTrip}><ShareIcon/> Share plan</button></div>
+      <div className="intel-hero-actions"><label className="intel-country-select"><span>Trip country</span><select aria-label="Trip country" value={country} onChange={e=>setCountry(e.target.value as CountryName)}><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></label><button className="secondary intel-share-button" onClick={shareTrip}><ShareIcon/> Share plan</button></div>
     </div>
 
     <div className="intel-kpis">
@@ -190,7 +191,7 @@ export default function TripIntelligence(props: Props) {
         <div className="panel-title"><div><span className="eyebrow">SMART CAPTURE</span><h3>Receipt to expense</h3></div><BanknotesIcon/></div>
         <p className="intel-copy">Attach a receipt photo and save the key details directly into the existing Expenses section.</p>
         <button className="primary full" onClick={()=>setReceiptOpen(v=>!v)}><CameraIcon/> {receiptOpen?'Close scanner':'Add receipt'}</button>
-        {receiptOpen&&<form action={saveReceipt} className="receipt-form"><input name="receipt" type="file" accept="image/*" capture="environment"/><input name="merchant" required placeholder="Merchant or expense"/><div><input name="amount" type="number" step="0.01" required placeholder="Amount"/><select name="currency"><option>AED</option><option>MYR</option><option>SGD</option><option>IDR</option></select></div><div><select name="category"><option>Food</option><option>Transport</option><option>Attraction</option><option>Shopping</option><option>Hotel</option><option>Other</option></select><input name="date" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></div><button className="secondary">Save expense</button></form>}
+        {receiptOpen&&<form action={saveReceipt} className="receipt-form"><input name="receipt" type="file" accept="image/*" capture="environment"/><input name="merchant" required placeholder="Merchant or expense"/><div><input name="amount" type="number" step="0.01" required placeholder="Amount"/><select name="currency"><option>AED</option><option>MYR</option><option>SGD</option><option>IDR</option></select></div><div><select name="category"><option>Food</option><option>Transport</option><option>Attraction</option><option>Shopping</option><option>Hotel</option><option>Other</option></select><DateTimePicker name="date" defaultValue={new Date().toISOString().slice(0,10)}/></div><button className="secondary">Save expense</button></form>}
       </article>
     </div>
 

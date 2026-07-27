@@ -70,6 +70,11 @@ async function geocode(primary: string, supplied?: unknown): Promise<Point | nul
   return null;
 }
 
+function walkingEstimate(km: number) {
+  const minutes = Math.max(1, Math.round((km / 4.8) * 60));
+  return { minutes, practical: km <= 10, note: km <= 10 ? 'Estimated at an average walking speed of 4.8 km/h.' : 'Possible in theory, but usually impractical for this distance.' };
+}
+
 function transitEstimate(country: string, km: number, drivingMinutes: number) {
   if (country === 'Singapore') return { mode: 'MRT / public bus', minutes: Math.max(12, Math.round(drivingMinutes * 1.35 + 8)), cost: Number(Math.min(2.57, Math.max(1.28, 1.09 + km * 0.085)).toFixed(2)), currency: 'SGD', note: 'MRT or public bus is usually the best-value option.' };
   if (country === 'Indonesia') return { mode: km < 5 ? 'TransJakarta / Mikrotrans' : 'MRT + TransJakarta', minutes: Math.max(18, Math.round(drivingMinutes * 1.55 + 12)), cost: km <= 10 ? 3500 : km <= 20 ? 7000 : 14000, currency: 'IDR', note: 'Use rail or TransJakarta for the main journey and a short ride-hail trip for the last mile.' };
@@ -96,7 +101,7 @@ export async function GET(request: NextRequest) {
     const route = await roadRoute(origin, { lat, lon });
     if (!route) return NextResponse.json({ error: 'No road route was found.' }, { status: 404 });
     const km = route.distance / 1000, drivingMinutes = Math.round(route.duration / 60);
-    return NextResponse.json({ origin, distanceKm: Number(km.toFixed(1)), drivingMinutes, transit: transitEstimate(country, km, drivingMinutes), estimated: true, checkedAt: new Date().toISOString() });
+    return NextResponse.json({ origin, distanceKm: Number(km.toFixed(1)), drivingMinutes, transit: transitEstimate(country, km, drivingMinutes), walking: walkingEstimate(km), estimated: true, checkedAt: new Date().toISOString() });
   } catch { return NextResponse.json({ error: 'Travel estimate is temporarily unavailable.' }, { status: 503 }); }
 }
 
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest) {
       const route = await roadRoute(origin, destination);
       if (!route) return NextResponse.json({ error: 'No road route was found.' }, { status: 404 });
       const km = route.distance / 1000, drivingMinutes = Math.round(route.duration / 60);
-      return NextResponse.json({ origin, destination, distanceKm: Number(km.toFixed(1)), drivingMinutes, transit: transitEstimate(body.country || '', km, drivingMinutes), estimated: true });
+      return NextResponse.json({ origin, destination, distanceKm: Number(km.toFixed(1)), drivingMinutes, transit: transitEstimate(body.country || '', km, drivingMinutes), walking: walkingEstimate(km), estimated: true });
     }
 
     const destinations = (body.destinations || []).filter(d => d.id && Number.isFinite(d.lat) && Number.isFinite(d.lon)).slice(0, 100);
@@ -128,7 +133,7 @@ export async function POST(request: NextRequest) {
       const metres = distances[index + 1], seconds = durations[index + 1];
       if (metres == null || seconds == null) return result;
       const km = metres / 1000, drivingMinutes = Math.round(seconds / 60);
-      result[destination.id] = { distanceKm: Number(km.toFixed(1)), drivingMinutes, transit: transitEstimate(destination.country, km, drivingMinutes), estimated: true };
+      result[destination.id] = { distanceKm: Number(km.toFixed(1)), drivingMinutes, transit: transitEstimate(destination.country, km, drivingMinutes), walking: walkingEstimate(km), estimated: true };
       return result;
     }, {});
     return NextResponse.json({ origin, routes, estimated: true });
