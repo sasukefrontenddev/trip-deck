@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import CountryExplorer from '@/components/CountryExplorer';
 import TripIntelligence from '@/components/TripIntelligence';
+import FoodGuide from '@/components/FoodGuide';
 import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
@@ -61,7 +62,7 @@ const starterChecklist: ChecklistItem[] = [
   { id: 'c6', title: 'Hotels and addresses confirmed', category: 'Stay', done: false },
 ];
 
-type Tab = 'overview' | 'smart' | 'explorer' | 'bookings' | 'itinerary' | 'documents' | 'expenses' | 'stays' | 'toolkit';
+type Tab = 'overview' | 'smart' | 'explorer' | 'food' | 'bookings' | 'itinerary' | 'documents' | 'expenses' | 'stays' | 'toolkit';
 const formatDate = (value: string) => new Date(`${value.slice(0, 10)}T00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short' });
 const normalizeWallClock = (value: string) => {
   const match = value?.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
@@ -178,7 +179,7 @@ export default function Home() {
       <div className="pass-top"><span>NEXT ROUTE</span><PaperAirplaneIcon/></div><div className="route"><strong>{nextBooking?.title || 'Dubai → Malaysia'}</strong><small>{nextBooking?.subtitle}</small></div><div className="pass-meta"><div><span>TRAVELERS</span><b>6</b></div><div><span>CONFIRMATION</span><b>{nextBooking?.confirmation || 'ADD PNR'}</b></div></div><div className="barcode">|||| ||| || |||| | ||| ||||||</div>
     </motion.div></section>
 
-    <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
+    <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'food', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
 
     <AnimatePresence mode="wait">
       {tab === 'overview' && <motion.section className="content" key="overview" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -191,6 +192,7 @@ export default function Home() {
 
       {tab === 'smart' && <motion.section className="content" key="smart" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><TripIntelligence attractions={attractions} bookings={bookings} hotels={hotels} itinerary={items} expenses={expenses} checklist={checklist} onRefresh={refresh} onOpenExplorer={(country) => { setExplorerCountry(country); setTab('explorer'); }} onOpenItinerary={() => setTab('itinerary')}/></motion.section>}
       {tab === 'explorer' && <motion.section className="content" key="explorer" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><CountryExplorer attractions={attractions} hotels={hotels} bookings={bookings} initialCountry={explorerCountry} onRefresh={refresh} onOpenItinerary={() => setTab('itinerary')}/></motion.section>}
+      {tab === 'food' && <motion.section className="content" key="food" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><FoodGuide hotels={hotels} bookings={bookings}/></motion.section>}
 
       {tab === 'itinerary' && <motion.section className="content" key="itinerary" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">DAY BY DAY</span><h3>Group itinerary</h3></div><button className="primary small" onClick={() => setShowAdd(true)}><PlusIcon/> Add</button></div>{items.length === 0 ? <Empty icon={<CalendarDaysIcon/>} title="No plans yet" text="Add activities, meals, transfers and reservations."/> : <div className="timeline">{[...items].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).map(item => <div className="timeline-row" key={item.id}><div className="time"><b>{formatDate(item.date)}</b><span>{item.time}</span></div><div className="dot"/><div className="timeline-card"><span>{item.country}</span><h4>{item.title}</h4><p>{item.location}</p><small>{item.notes}</small></div></div>)}</div>}</motion.section>}
 
