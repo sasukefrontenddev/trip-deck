@@ -66,6 +66,13 @@ export type Expense = {
   merchant?: string;
   paymentMethod?: 'Cash' | 'Card' | 'Bank transfer' | 'E-wallet';
   splitCount?: number;
+  splitWith?: TravelerName[];
+  splitShares?: Partial<Record<TravelerName, number>>;
+  localAmount?: number;
+  aedAmount?: number;
+  fxRateToAED?: number;
+  fxProvider?: string;
+  fxUpdatedAt?: string;
 };
 
 export type HotelStay = {
