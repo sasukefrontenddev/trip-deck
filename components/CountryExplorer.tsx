@@ -27,6 +27,18 @@ export default function CountryExplorer({attractions,hotels,bookings,initialCoun
  const hasHotel=Boolean(hotel&&hotel.address&&hotel.address!=='Add hotel address'&&hotel.name&&!hotel.name.startsWith('Add '));
  const list=useMemo(()=>attractions.filter(a=>Boolean(a.description)).filter(a=>a.country===country).filter(a=>`${a.name} ${a.city} ${a.category} ${a.description||''}`.toLowerCase().includes(query.toLowerCase())).filter(a=>category==='All'||a.category===category),[attractions,country,query,category]);
  const categories=['All',...Array.from(new Set(attractions.filter(a=>Boolean(a.description)&&a.country===country).map(a=>a.category)))];
+ useEffect(()=>{
+  if(!hasHotel||!hotel) return;
+  const destinations=list.filter(a=>Number.isFinite(a.latitude)&&Number.isFinite(a.longitude)&&!routes[a.id]).map(a=>({id:a.id,lat:Number(a.latitude),lon:Number(a.longitude),country:a.country}));
+  if(!destinations.length) return;
+  const controller=new AbortController();
+  setLoading(v=>({...v,...Object.fromEntries(destinations.map(d=>[d.id,true]))}));
+  fetch('/api/travel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:`${hotel.name}, ${hotel.address}, ${hotel.city}, ${hotel.country}`,destinations}),signal:controller.signal})
+   .then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to calculate routes.');setRoutes(v=>({...v,...data.routes}));})
+   .catch(error=>{if(error?.name!=='AbortError')setRoutes(v=>({...v,...Object.fromEntries(destinations.map(d=>[d.id,{distanceKm:0,drivingMinutes:0,transit:{mode:'Unavailable',minutes:0,cost:0,currency:'',note:error instanceof Error?error.message:'Unable to calculate.'},error:error instanceof Error?error.message:'Unable to calculate.'}]))}));})
+   .finally(()=>setLoading(v=>({...v,...Object.fromEntries(destinations.map(d=>[d.id,false]))})));
+  return()=>controller.abort();
+ },[country,hasHotel,hotel?.name,hotel?.address,hotel?.city,list.length]);
  async function toggle(a:Attraction,key:'wishlist'|'visited'|'saved'){await put('attractions',{...a,[key]:!a[key]}); await onRefresh(); setSelected(s=>s?.id===a.id?{...a,[key]:!a[key]}:s)}
  async function add(a:Attraction,date:string,period:DayPeriod){const item:ItineraryItem={id:crypto.randomUUID(),title:a.name,location:`${a.address||''}${a.city?`, ${a.city}`:''}`,date,time:time[period],country:a.country,period,notes:[a.duration,a.bestTime].filter(Boolean).join(' · '),attractionId:a.id};await put('itinerary',item);await onRefresh();setPlanning(null);onOpenItinerary()}
  async function calculate(a:Attraction){if(!hasHotel||!hotel||!Number.isFinite(a.latitude)||!Number.isFinite(a.longitude))return;setLoading(v=>({...v,[a.id]:true}));try{const q=new URLSearchParams({hotel:`${hotel.name}, ${hotel.address}, ${hotel.city}, ${hotel.country}`,lat:String(a.latitude),lon:String(a.longitude),country:a.country});const r=await fetch(`/api/travel?${q}`);const data=await r.json();setRoutes(v=>({...v,[a.id]:r.ok?data:{distanceKm:0,drivingMinutes:0,transit:{mode:'Unavailable',minutes:0,cost:0,currency:a.currency||'',note:data.error||'Unable to calculate.'},error:data.error}}))}finally{setLoading(v=>({...v,[a.id]:false}))}}
