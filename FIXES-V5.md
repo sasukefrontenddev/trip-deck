@@ -20,3 +20,10 @@ TripDeck Food V5
 - Near-departure status requests are parallelized, deduplicated for 4 minutes, and client/server timed out so a slow provider cannot hold the UI.
 - Flight lookup is cache-first: matching saved details appear immediately while AeroDataBox refreshes in the background.
 - Replaced native browser password prompts with a TripDeck-styled create/unlock modal, inline validation, loading state, and matching lock/unlock controls.
+
+## Instant local data loading
+- `getAll()` is now IndexedDB-only and never waits for Redis/network requests.
+- Bookings, stays, itinerary, expenses, documents and other cached trip data paint from local storage first.
+- Redis reconciliation runs asynchronously after first paint and when connectivity returns.
+- Local writes/deletes complete before cloud sync; mutations are queued durably for background upload.
+- Added a cloud request timeout and a sync-queue mutex to prevent slow/repeated network work from blocking the UI.

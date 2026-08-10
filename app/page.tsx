@@ -18,7 +18,7 @@ import LiveMoneyAndShops from '@/components/LiveMoneyAndShops';
 import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
-  ItineraryItem, put, remove, TRAVELERS, TravelerName, TripDocument, DocumentVault
+  ItineraryItem, put, remove, syncAllFromCloud, TRAVELERS, TravelerName, TripDocument, DocumentVault
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
 import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
@@ -148,7 +148,10 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
-      // Remove flight placeholders from older builds. Only user-added flights should appear.
+      // Paint cached data first. Nothing network-related is allowed on this path.
+      await refresh();
+
+      // Local migrations/seeds are also instant; cloud writes happen in the background.
       for (const id of LEGACY_SAMPLE_FLIGHT_IDS) await remove('bookings', id);
       const existingChecklist = await getAll('checklist');
       if (!existingChecklist.length) for (const item of starterChecklist) await put('checklist', item);
@@ -165,10 +168,19 @@ export default function Home() {
       }
       for (const oldId of ['id-uluwatu','id-tegallalang','id-waterbom','id-monkey','id-tirta','id-tanahlot']) await remove('attractions', oldId);
       await refresh();
+
+      // Redis reconciliation is intentionally detached from first paint.
+      window.setTimeout(async () => {
+        const changed = await syncAllFromCloud();
+        if (changed) await refresh();
+      }, 50);
     })();
-    const sync = () => setOnline(navigator.onLine);
+    const sync = () => {
+      const isOnline = navigator.onLine; setOnline(isOnline);
+      if (isOnline) void syncAllFromCloud().then(changed => { if (changed) void refresh(); });
+    };
     const onScroll = () => { const max = document.documentElement.scrollHeight - innerHeight; setScrollProgress(max > 0 ? scrollY / max * 100 : 0); };
-    sync(); onScroll();
+    setOnline(navigator.onLine); onScroll();
     const countdownTimer = window.setInterval(() => setNow(Date.now()), 1000);
     window.addEventListener('online', sync); window.addEventListener('offline', sync); window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.clearInterval(countdownTimer); window.removeEventListener('online', sync); window.removeEventListener('offline', sync); window.removeEventListener('scroll', onScroll); };

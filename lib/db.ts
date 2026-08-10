@@ -140,53 +140,103 @@ function fromCloudValue(store: TripStoreName, value: any) {
 }
 async function cloudRequest(path: string, init?: RequestInit) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('offline');
-  const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, cache: 'no-store' });
-  if (!response.ok) throw new Error(`Cloud sync failed (${response.status})`);
-  return response.status === 204 ? null : response.json();
-}
-async function queueMutation(mutation: Omit<SyncMutation, 'id' | 'createdAt'>) {
-  const db = await dbPromise!; await db.put('syncQueue', { ...mutation, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
-}
-async function flushQueue() {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-  const db = await dbPromise!; const queued = await db.getAll('syncQueue');
-  for (const mutation of queued.sort((a,b) => a.createdAt.localeCompare(b.createdAt))) {
-    try {
-      if (mutation.operation === 'put') await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
-      else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
-      await db.delete('syncQueue', mutation.id);
-    } catch { break; }
+  const controller = new AbortController();
+  const timer = typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), 4500) : undefined;
+  try {
+    const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, cache: 'no-store', signal: init?.signal || controller.signal });
+    if (!response.ok) throw new Error(`Cloud sync failed (${response.status})`);
+    return response.status === 204 ? null : response.json();
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
   }
 }
 
-export async function getAll<T extends TripStoreName>(store: T): Promise<TripDB[T]['value'][]> {
-  const db = await dbPromise!;
-  try {
-    await flushQueue();
-    const remote = await cloudRequest(`/api/data/${store}`) as { values?: any[]; configured?: boolean };
-    if (remote?.configured && Array.isArray(remote.values)) {
-      for (const raw of remote.values) await db.put(store as any, fromCloudValue(store, raw));
-      // First-run migration: if Redis is empty, upload the existing offline cache.
-      if (!remote.values.length) {
-        const local = await db.getAll(store as any) as any[];
-        for (const value of local) {
-          try { await cloudRequest(`/api/data/${store}/${encodeURIComponent(value.id)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(store, value) }) }); } catch { /* keep local */ }
-        }
-      }
+async function queueMutation(mutation: Omit<SyncMutation, 'id' | 'createdAt'>) {
+  const db = await dbPromise!; await db.put('syncQueue', { ...mutation, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
+}
+let flushPromise: Promise<void> | null = null;
+async function flushQueue() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  if (flushPromise) return flushPromise;
+  flushPromise = (async () => {
+    const db = await dbPromise!;
+    const queued = await db.getAll('syncQueue');
+    for (const mutation of queued.sort((a,b) => a.createdAt.localeCompare(b.createdAt))) {
+      try {
+        if (mutation.operation === 'put') await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
+        else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
+        await db.delete('syncQueue', mutation.id);
+      } catch { break; }
     }
-  } catch { /* IndexedDB remains the offline source of truth */ }
+  })().finally(() => { flushPromise = null; });
+  return flushPromise;
+}
+
+export async function getAll<T extends TripStoreName>(store: T): Promise<TripDB[T]['value'][]> {
+  // Critical path is LOCAL ONLY. IndexedDB is the instant/offline source of truth.
+  // Cloud reconciliation is deliberately separated so opening Bookings/Stays/Itinerary
+  // never waits for Redis, Vercel cold starts or the network.
+  const db = await dbPromise!;
   return db.getAll(store as any) as Promise<TripDB[T]['value'][]>;
 }
 
+export async function syncStoreFromCloud<T extends TripStoreName>(store: T): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
+  const db = await dbPromise!;
+  try {
+    // Push pending local mutations first so a stale cloud copy cannot overwrite them.
+    await flushQueue();
+    const remote = await cloudRequest(`/api/data/${store}`) as { values?: any[]; configured?: boolean };
+    if (!remote?.configured || !Array.isArray(remote.values)) return false;
+
+    const local = await db.getAll(store as any) as any[];
+    if (!remote.values.length && local.length) {
+      // First-run migration is background-only.
+      await Promise.allSettled(local.map(async value =>
+        cloudRequest(`/api/data/${store}/${encodeURIComponent(value.id)}`, {
+          method: 'PUT', body: JSON.stringify({ value: await toCloudValue(store, value) })
+        })
+      ));
+      return false;
+    }
+
+    let changed = false;
+    for (const raw of remote.values) {
+      const value = fromCloudValue(store, raw);
+      const before = await db.get(store as any, value.id) as any;
+      if (!before || JSON.stringify(before) !== JSON.stringify(value)) {
+        await db.put(store as any, value);
+        changed = true;
+      }
+    }
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
+export async function syncAllFromCloud(stores: TripStoreName[] = ['bookings','documents','itinerary','checklist','expenses','hotels','attractions','vaults']): Promise<boolean> {
+  const results = await Promise.allSettled(stores.map(store => syncStoreFromCloud(store)));
+  return results.some(result => result.status === 'fulfilled' && result.value);
+}
+
+function syncPutInBackground<T extends TripStoreName>(_store: T, _value: TripDB[T]['value']) {
+  // The mutation is already durable in IndexedDB's syncQueue. Flush it asynchronously.
+  void flushQueue();
+}
+
 export async function put<T extends TripStoreName>(store: T, value: TripDB[T]['value']) {
-  const db = await dbPromise!; await db.put(store as any, value as any);
-  try { await flushQueue(); await cloudRequest(`/api/data/${store}/${encodeURIComponent((value as any).id)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(store, value) }) }); }
-  catch { await queueMutation({ store, operation: 'put', key: (value as any).id, value }); }
+  const db = await dbPromise!;
+  await db.put(store as any, value as any);
+  // Queue immediately, then sync without blocking the UI.
+  await queueMutation({ store, operation: 'put', key: (value as any).id, value });
+  syncPutInBackground(store, value);
   return (value as any).id;
 }
 
 export async function remove<T extends TripStoreName>(store: T, key: string) {
-  const db = await dbPromise!; await db.delete(store as any, key);
-  try { await flushQueue(); await cloudRequest(`/api/data/${store}/${encodeURIComponent(key)}`, { method: 'DELETE' }); }
-  catch { await queueMutation({ store, operation: 'delete', key }); }
+  const db = await dbPromise!;
+  await db.delete(store as any, key);
+  await queueMutation({ store, operation: 'delete', key });
+  void flushQueue();
 }
