@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redisCommand, redisConfigured } from '@/lib/redis';
 
-const STORES = new Set(['bookings','documents','itinerary','checklist','expenses','hotels','attractions']);
+const STORES = new Set(['bookings','documents','itinerary','checklist','expenses','hotels','attractions','vaults']);
 export const dynamic = 'force-dynamic';
 async function paramsOf(context: { params: Promise<{ store: string; id: string }> }) { return context.params; }
 export async function PUT(request: NextRequest, context: { params: Promise<{ store: string; id: string }> }) {

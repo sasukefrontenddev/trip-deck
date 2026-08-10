@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowDownTrayIcon, ArrowUpTrayIcon, BanknotesIcon, BellIcon, BuildingOffice2Icon,
@@ -18,10 +18,11 @@ import LiveMoneyAndShops from '@/components/LiveMoneyAndShops';
 import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
-  ItineraryItem, put, remove, TRAVELERS, TravelerName, TripDocument
+  ItineraryItem, put, remove, TRAVELERS, TravelerName, TripDocument, DocumentVault
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
 import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
+import { createVault, decryptDocumentBlob, encryptDocumentBlob, unlockVault } from '@/lib/vault';
 
 const TRAVELER_COUNT_BY_COUNTRY: Record<CountryName, number> = { Malaysia: 5, Singapore: 6, Indonesia: 5 };
 const COUNTRY_TRAVELERS: Record<CountryName, TravelerName[]> = {
@@ -117,6 +118,9 @@ export default function Home() {
   const [showAdd, setShowAdd] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [documents, setDocuments] = useState<TripDocument[]>([]);
+  const [vaults, setVaults] = useState<DocumentVault[]>([]);
+  const [unlockedTravelers, setUnlockedTravelers] = useState<TravelerName[]>([]);
+  const vaultKeys = useRef<Partial<Record<TravelerName, CryptoKey>>>({});
   const [items, setItems] = useState<ItineraryItem[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -133,11 +137,11 @@ export default function Home() {
   const [now, setNow] = useState(() => Date.now());
 
   async function refresh() {
-    const [b, d, i, c, e, h, a] = await Promise.all([
+    const [b, d, i, c, e, h, a, v] = await Promise.all([
       getAll('bookings'), getAll('documents'), getAll('itinerary'), getAll('checklist'),
-      getAll('expenses'), getAll('hotels'), getAll('attractions'),
+      getAll('expenses'), getAll('hotels'), getAll('attractions'), getAll('vaults'),
     ]);
-    setBookings(b); setDocuments(d); setItems(i); setChecklist(c); setExpenses(e); setHotels(h); setAttractions(a);
+    setBookings(b); setDocuments(d); setItems(i); setChecklist(c); setExpenses(e); setHotels(h); setAttractions(a); setVaults(v);
   }
 
   useEffect(() => {
@@ -242,7 +246,56 @@ export default function Home() {
     return { days, hours, minutes, seconds, departed: remaining === 0 };
   }, [nextBooking, now]);
   const prepDone = checklist.filter(i => i.done).length;
-  const selectedDocs = documents.filter(d => d.traveler === traveler);
+  const selectedVault = vaults.find(v => v.traveler === traveler);
+  const travelerUnlocked = unlockedTravelers.includes(traveler);
+  const selectedDocs = travelerUnlocked ? documents.filter(d => d.traveler === traveler) : [];
+
+  async function ensureTravelerVault(target: TravelerName = traveler): Promise<CryptoKey | null> {
+    const cached = vaultKeys.current[target];
+    if (cached) return cached;
+    const existing = vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
+    if (!existing) {
+      const password = window.prompt(`Create a private document password for ${target}. Use at least 8 characters.`);
+      if (!password) return null;
+      const confirm = window.prompt(`Confirm ${target}'s document password.`);
+      if (password !== confirm) { alert('Passwords did not match.'); return null; }
+      try {
+        const { vault, key } = await createVault(target, password);
+        await put('vaults', vault);
+        vaultKeys.current[target] = key;
+        setUnlockedTravelers(current => Array.from(new Set([...current, target])));
+        // Encrypt any documents that were saved by an older TripDeck build.
+        const legacyDocs = (await getAll('documents')).filter(d => d.traveler === target && !d.encrypted);
+        for (const doc of legacyDocs) await put('documents', await encryptDocumentBlob(doc, doc.blob, key));
+        await refresh();
+        return key;
+      } catch (error) { alert(error instanceof Error ? error.message : 'Could not create the private vault.'); return null; }
+    }
+    const password = window.prompt(`Enter ${target}'s document password.`);
+    if (!password) return null;
+    const key = await unlockVault(existing, password);
+    if (!key) { alert('Incorrect password.'); return null; }
+    vaultKeys.current[target] = key;
+    setUnlockedTravelers(current => Array.from(new Set([...current, target])));
+    return key;
+  }
+
+  function lockTraveler(target: TravelerName = traveler) {
+    delete vaultKeys.current[target];
+    setUnlockedTravelers(current => current.filter(name => name !== target));
+  }
+
+  async function openPrivateDocument(doc: TripDocument) {
+    const key = await ensureTravelerVault(doc.traveler);
+    if (!key) return;
+    try {
+      const blob = await decryptDocumentBlob(doc, key);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch { alert('This document could not be decrypted. Check that you used the correct traveler password.'); }
+  }
+
   const countryExpenses = expenses.filter(e => e.country === expenseCountry);
   const categoryTotals = useMemo(() => Object.entries(countryExpenses.reduce<Record<string, number>>((acc, e) => {
     acc[e.category] = (acc[e.category] || 0) + e.amount; return acc;
@@ -250,10 +303,12 @@ export default function Home() {
 
   async function uploadFiles(files: FileList | null) {
     if (!files) return;
-    for (const file of Array.from(files)) await put('documents', {
-      id: crypto.randomUUID(), traveler, category: docCategory, name: file.name,
-      type: file.type || 'file', size: file.size, createdAt: new Date().toISOString(), blob: file,
-    });
+    const key = await ensureTravelerVault(traveler);
+    if (!key) return;
+    for (const file of Array.from(files)) {
+      const doc: TripDocument = { id: crypto.randomUUID(), traveler, category: docCategory, name: file.name, type: file.type || 'file', size: file.size, createdAt: new Date().toISOString(), blob: file };
+      await put('documents', await encryptDocumentBlob(doc, file, key));
+    }
     await refresh();
   }
 
@@ -318,7 +373,10 @@ export default function Home() {
     setItineraryImporting(true); setItineraryImportStatus('Reading PDF…');
     try {
       const documentId = crypto.randomUUID();
-      await put('documents', { id: documentId, traveler, category: 'Itinerary', name: file.name, type: file.type || 'application/pdf', size: file.size, createdAt: new Date().toISOString(), blob: file });
+      const vaultKey = await ensureTravelerVault(traveler);
+      if (!vaultKey) throw new Error('Unlock or create this traveler’s private document vault before importing an itinerary PDF.');
+      const itineraryDoc: TripDocument = { id: documentId, traveler, category: 'Itinerary', name: file.name, type: file.type || 'application/pdf', size: file.size, createdAt: new Date().toISOString(), blob: file };
+      await put('documents', await encryptDocumentBlob(itineraryDoc, file, vaultKey));
       const lines = await extractPdfLines(file);
       setItineraryImportStatus('Structuring days and times…');
       let parsed = parseItineraryLines(lines, itineraryCountry).map(item => ({ ...item, sourceDocumentId: documentId }));
@@ -478,10 +536,9 @@ export default function Home() {
         {items.filter(x=>x.country===itineraryCountry).length === 0 ? <Empty icon={<CalendarDaysIcon/>} title={`No ${itineraryCountry} plans yet`} text="Import an itinerary PDF or add activities, meals, transfers and reservations manually."/> : <div className="itinerary-days">{Object.entries(items.filter(x=>x.country===itineraryCountry).sort((a,b)=>`${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).reduce<Record<string,ItineraryItem[]>>((acc,item)=>{(acc[item.date] ||= []).push(item);return acc;},{})).map(([date,dayItems],dayIndex)=><section className="itinerary-day glass" key={date}><header><div><span>DAY {dayIndex+1}</span><h4>{new Date(`${date}T12:00`).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</h4></div><b>{dayItems.length} stops</b></header><div className="timeline">{dayItems.map((item,index)=><div className="timeline-row itinerary-row" key={item.id}><div className="time"><b>{item.time}</b><span>{index===0?'Start':`Stop ${index+1}`}</span></div><div className="dot"/><div className="timeline-card rich-itinerary-card"><div className="itinerary-card-top"><span>{item.source==='pdf'?'PDF IMPORT':'MANUAL'}</span><button title="Delete" onClick={async()=>{await remove('itinerary',item.id);await refresh();}}><TrashIcon/></button></div><h4>{item.title}</h4><p><MapPinIcon/>{item.location}</p>{item.commuteMinutes && <div className="commute-strip"><div><small>FROM</small><b>{item.commuteFrom || 'Previous stop'}</b></div><div><small>COMMUTE</small><b>{item.commuteMinutes} min</b><span>{item.commuteMode}</span></div><div><small>DISTANCE</small><b>{item.distanceKm ? `${item.distanceKm} km` : '—'}</b></div><div><small>EST. COST</small><b>{item.commuteCost != null ? `${item.commuteCurrency} ${Number(item.commuteCost).toLocaleString()}` : '—'}</b><span>{item.commuteCost != null ? `~${item.commuteCurrency} ${(Number(item.commuteCost)*TRAVELER_COUNT_BY_COUNTRY[item.country]).toLocaleString()} for ${TRAVELER_COUNT_BY_COUNTRY[item.country]}` : ''}</span></div></div>}{item.activityCost != null && <div className="activity-cost"><small>ACTIVITY / BOOKING COST FOUND IN PDF</small><b>{item.activityCurrency} {Number(item.activityCost).toLocaleString()}</b></div>}{item.commuteNote && <small className="route-note">{item.commuteNote}</small>}{item.notes && <small className="itinerary-notes">{item.notes}</small>}</div></div>)}</div></section>)}</div>}</motion.section>}
 
       {tab === 'documents' && <motion.section className="content" key="documents" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">6 PRIVATE FOLDERS</span><h3>Traveler documents</h3></div></div>
-        <div className="traveler-tabs">{TRAVELERS.map(name => <button key={name} className={traveler === name ? 'active' : ''} onClick={() => setTraveler(name)}><FolderIcon/><span>{name}</span><b>{documents.filter(d => d.traveler === name).length}</b></button>)}</div>
-        <div className="vault-banner"><ShieldCheckIcon/><div><b>{traveler}&apos;s folder</b><span>Files are stored locally in IndexedDB and remain available offline on this device.</span></div></div>
-        <div className="upload-toolbar"><select value={docCategory} onChange={e => setDocCategory(e.target.value as TripDocument['category'])}><option>Passport</option><option>Visa</option><option>Ticket</option><option>Insurance</option><option>Hotel</option><option>Itinerary</option><option>Other</option></select><label className="primary small"><ArrowUpTrayIcon/> Upload for {traveler}<input type="file" multiple hidden onChange={e => uploadFiles(e.target.files)}/></label></div>
-        {selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="Upload passport copies, visas, tickets, insurance and hotel vouchers."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB</span></div><div className="doc-actions"><button onClick={() => { const u = URL.createObjectURL(doc.blob); window.open(u, '_blank'); }}>Open</button><button onClick={async () => { await remove('documents', doc.id); await refresh(); }}><TrashIcon/></button></div></article>)}</div>}
+        <div className="traveler-tabs">{TRAVELERS.map(name => <button key={name} className={traveler === name ? 'active' : ''} onClick={() => setTraveler(name)}><FolderIcon/><span>{name}</span><b>{unlockedTravelers.includes(name) ? documents.filter(d => d.traveler === name).length : '🔒'}</b></button>)}</div>
+        {!travelerUnlocked ? <div className="vault-lock glass"><ShieldCheckIcon/><div><b>{selectedVault ? `${traveler}'s private vault is locked` : `Protect ${traveler}'s documents`}</b><span>{selectedVault ? 'Enter this traveler’s password to view or open their documents.' : 'Create a password. Existing files will be encrypted automatically and future uploads will be encrypted before cloud sync.'}</span></div><button className="primary small" onClick={() => ensureTravelerVault(traveler)}>{selectedVault ? 'Unlock documents' : 'Create private vault'}</button></div> : <><div className="vault-banner"><ShieldCheckIcon/><div><b>{traveler}&apos;s encrypted folder</b><span>Unlocked for this browser session. File contents are AES-256-GCM encrypted before local/cloud storage.</span></div></div><div className="upload-toolbar"><select value={docCategory} onChange={e => setDocCategory(e.target.value as TripDocument['category'])}><option>Passport</option><option>Visa</option><option>Ticket</option><option>Insurance</option><option>Hotel</option><option>Itinerary</option><option>Other</option></select><label className="primary small"><ArrowUpTrayIcon/> Upload for {traveler}<input type="file" multiple hidden onChange={e => uploadFiles(e.target.files)}/></label><button className="secondary small" onClick={() => lockTraveler(traveler)}>Lock folder</button></div>
+        {selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="Upload passport copies, visas, tickets, insurance and hotel vouchers. Files are encrypted with this traveler’s password."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB · {doc.encrypted ? 'Encrypted' : 'Legacy file'}</span></div><div className="doc-actions"><button onClick={() => openPrivateDocument(doc)}>Open</button><button onClick={async () => { if (confirm(`Delete ${doc.name}?`)) { await remove('documents', doc.id); await refresh(); } }}><TrashIcon/></button></div></article>)}</div>}</>}
       </motion.section>}
 
       {tab === 'expenses' && <motion.section className="content" key="expenses" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><ExpenseCenter country={expenseCountry} setCountry={setExpenseCountry} expenses={expenses} onRefresh={refresh}/></motion.section>}

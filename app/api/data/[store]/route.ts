@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redisCommand, redisConfigured } from '@/lib/redis';
 
-const STORES = new Set(['bookings','documents','itinerary','checklist','expenses','hotels','attractions']);
+const STORES = new Set(['bookings','documents','itinerary','checklist','expenses','hotels','attractions','vaults']);
 export const dynamic = 'force-dynamic';
 export async function GET(_request: NextRequest, context: { params: Promise<{ store: string }> }) {
   const { store } = await context.params;

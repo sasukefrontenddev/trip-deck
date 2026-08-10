@@ -37,6 +37,8 @@ export type Booking = {
   reminderEnabled?: boolean;
 };
 
+export type DocumentVault = { id: string; traveler: TravelerName; salt: string; verifier: string; iterations: number; createdAt: string };
+
 export type TripDocument = {
   id: string;
   traveler: TravelerName;
@@ -46,6 +48,9 @@ export type TripDocument = {
   size: number;
   createdAt: string;
   blob: Blob;
+  encrypted?: boolean;
+  encryptionIv?: string;
+  originalType?: string;
 };
 
 export type ItineraryItem = { id: string; title: string; location: string; date: string; time: string; country: CountryName; notes?: string; attractionId?: string; period?: DayPeriod; source?: 'manual' | 'pdf'; sourceDocumentId?: string; commuteFrom?: string; distanceKm?: number; commuteMinutes?: number; commuteMode?: string; commuteCost?: number; commuteCurrency?: string; commuteNote?: string; activityCost?: number; activityCurrency?: string };
@@ -72,7 +77,7 @@ export type Attraction = {
   visited?: boolean; notes?: string;
 };
 
-export type TripStoreName = 'bookings' | 'documents' | 'itinerary' | 'checklist' | 'expenses' | 'hotels' | 'attractions';
+export type TripStoreName = 'bookings' | 'documents' | 'itinerary' | 'checklist' | 'expenses' | 'hotels' | 'attractions' | 'vaults';
 type SyncMutation = { id: string; store: TripStoreName; operation: 'put' | 'delete'; key: string; value?: unknown; createdAt: string };
 
 interface TripDB extends DBSchema {
@@ -83,10 +88,11 @@ interface TripDB extends DBSchema {
   expenses: { key: string; value: Expense };
   hotels: { key: string; value: HotelStay };
   attractions: { key: string; value: Attraction };
+  vaults: { key: string; value: DocumentVault };
   syncQueue: { key: string; value: SyncMutation };
 }
 
-const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 8, {
+const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 9, {
   async upgrade(db, oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains('bookings')) db.createObjectStore('bookings', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
@@ -95,6 +101,7 @@ const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdec
     if (!db.objectStoreNames.contains('expenses')) db.createObjectStore('expenses', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('hotels')) db.createObjectStore('hotels', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('attractions')) db.createObjectStore('attractions', { keyPath: 'id' });
+    if (!db.objectStoreNames.contains('vaults')) db.createObjectStore('vaults', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('syncQueue')) db.createObjectStore('syncQueue', { keyPath: 'id' });
 
     if (oldVersion < 3 && db.objectStoreNames.contains('documents')) {
