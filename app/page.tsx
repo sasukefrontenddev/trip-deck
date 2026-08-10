@@ -257,6 +257,61 @@ export default function Home() {
     await refresh();
   }
 
+  async function enrichImportedItinerary(imported: ItineraryItem[], fileName: string) {
+    if (!online || !imported.length) return;
+    let enrichedCount = 0;
+    let failedCount = 0;
+    const completedByDay = new Map<string, ItineraryItem>();
+
+    // Route enrichment is intentionally best-effort and runs AFTER the itinerary
+    // has already been rendered. A geocoder/routing failure must never block a PDF import.
+    for (const item of imported) {
+      const dayKey = `${item.country}:${item.date}`;
+      const previous = completedByDay.get(dayKey);
+      const hotel = hotels.find(h => h.country === item.country);
+      const hotelAddress = hotel && !hotel.name.startsWith('Add ') && hotel.address && !/^add /i.test(hotel.address) ? hotel.address : '';
+      const origin = previous?.location || hotelAddress;
+      completedByDay.set(dayKey, item);
+
+      if (!origin || !item.location || origin.trim().toLowerCase() === item.location.trim().toLowerCase()) continue;
+      try {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 7000);
+        const response = await fetch('/api/travel', {
+          method:'POST', headers:{'Content-Type':'application/json'}, signal: controller.signal,
+          body:JSON.stringify({
+            origin, destination:item.location, country:item.country,
+            originCandidates:[origin, `${origin}, ${item.country}`],
+            destinationCandidates:[item.location, `${item.location}, ${item.country}`]
+          })
+        });
+        window.clearTimeout(timer);
+        if (!response.ok) { failedCount++; continue; }
+        const route = await response.json();
+        const updated: ItineraryItem = {
+          ...item,
+          commuteFrom: origin,
+          distanceKm: route.distanceKm,
+          commuteMinutes: route.transit?.minutes || route.drivingMinutes,
+          commuteMode: route.transit?.mode || 'Drive / taxi',
+          commuteCost: route.transit?.cost,
+          commuteCurrency: route.transit?.currency,
+          commuteNote: route.transit?.note || 'Estimated route'
+        };
+        enrichedCount++;
+        completedByDay.set(dayKey, updated);
+        setItems(current => current.map(row => row.id === updated.id ? updated : row));
+        await put('itinerary', updated);
+      } catch {
+        failedCount++;
+        // The imported activity remains valid even when its location cannot be geocoded.
+      }
+    }
+    setItineraryImportStatus(
+      `Imported ${imported.length} activities from ${fileName}. ${enrichedCount ? `Commute details added to ${enrichedCount} ${enrichedCount === 1 ? 'activity' : 'activities'}. ` : ''}${failedCount ? `${failedCount} route ${failedCount === 1 ? 'estimate was' : 'estimates were'} unavailable and can be retried after correcting the place name.` : 'Commute enrichment complete.'}`
+    );
+  }
+
   async function importItineraryPdf(file?: File) {
     if (!file) return;
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return alert('Please select a PDF itinerary.');
@@ -269,29 +324,29 @@ export default function Home() {
       let parsed = parseItineraryLines(lines, itineraryCountry).map(item => ({ ...item, sourceDocumentId: documentId }));
       if (!parsed.length) throw new Error('No itinerary activities could be extracted from this PDF.');
       parsed = parsed.sort((a,b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
-      setItineraryImportStatus(`Calculating commute details for ${parsed.length} activities…`);
-      const enriched: ItineraryItem[] = [];
-      for (const item of parsed) {
-        const previous = [...enriched].reverse().find(x => x.country === item.country && x.date === item.date);
-        const hotel = hotels.find(h => h.country === item.country);
-        const origin = previous?.location || (hotel && !hotel.name.startsWith('Add ') ? hotel.address : '');
-        let next: ItineraryItem = { ...item, commuteFrom: origin || undefined };
-        if (online && origin && item.location && origin.toLowerCase() !== item.location.toLowerCase()) {
-          try {
-            const response = await fetch('/api/travel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ origin, destination:item.location, country:item.country, originCandidates:[`${origin}, ${item.country}`], destinationCandidates:[`${item.location}, ${item.country}`] }) });
-            const route = await response.json();
-            if (response.ok) next = { ...next, distanceKm: route.distanceKm, commuteMinutes: route.transit?.minutes || route.drivingMinutes, commuteMode: route.transit?.mode || 'Drive / taxi', commuteCost: route.transit?.cost, commuteCurrency: route.transit?.currency, commuteNote: route.transit?.note || 'Estimated route' };
-          } catch { /* keep imported item without route estimate */ }
-        }
-        enriched.push(next);
-      }
-      for (const item of enriched) await put('itinerary', item);
-      await refresh();
-      setItineraryCountry(enriched[0]?.country || itineraryCountry);
-      setItineraryImportStatus(`Imported ${enriched.length} activities from ${file.name}. Review any ambiguous locations or times.`);
+
+      // Render immediately. Commute/geocoding is a secondary enhancement and must
+      // not hold the imported itinerary hostage if an external provider rejects a place.
+      setItems(current => {
+        const importedIds = new Set(parsed.map(item => item.id));
+        return [...current.filter(item => !importedIds.has(item.id)), ...parsed];
+      });
+      setItineraryCountry(parsed[0]?.country || itineraryCountry);
+      setItineraryImportStatus(`Imported ${parsed.length} activities. Saving them now; commute details will be added in the background…`);
+
+      const saves = await Promise.allSettled(parsed.map(item => put('itinerary', item)));
+      const savedCount = saves.filter(result => result.status === 'fulfilled').length;
+      if (!savedCount) throw new Error('The PDF was parsed, but the itinerary could not be saved. Please try again.');
+      if (savedCount !== parsed.length) setItineraryImportStatus(`Showing ${parsed.length} parsed activities. ${savedCount} were saved successfully; retry the import if any entries disappear after refresh.`);
+      setItineraryImporting(false);
+
+      // Do not await this: routing can involve multiple external geocoding calls.
+      // The user can use the itinerary immediately while estimates fill in progressively.
+      void enrichImportedItinerary(parsed, file.name);
     } catch (error) {
       setItineraryImportStatus(error instanceof Error ? error.message : 'Could not import this itinerary PDF.');
-    } finally { setItineraryImporting(false); }
+      setItineraryImporting(false);
+    }
   }
 
   async function enableNotifications() {

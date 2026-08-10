@@ -6,6 +6,13 @@ type Point = { lat: number; lon: number; displayName?: string };
 type Destination = { id: string; lat: number; lon: number; country: string };
 
 const userAgent = 'TripDeck/1.2 travel-route-service';
+async function fetchWithTimeout(input: string | URL, init: RequestInit = {}, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(input, { ...init, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+
 const airports: Record<string, Point> = {
   KUL: { lat: 2.7456, lon: 101.7072, displayName: 'Kuala Lumpur International Airport' },
   KLIA: { lat: 2.7456, lon: 101.7072, displayName: 'Kuala Lumpur International Airport' },
@@ -14,6 +21,7 @@ const airports: Record<string, Point> = {
   DPS: { lat: -8.7482, lon: 115.1672, displayName: 'I Gusti Ngurah Rai International Airport' },
   SHJ: { lat: 25.3286, lon: 55.5172, displayName: 'Sharjah International Airport' },
   DXB: { lat: 25.2532, lon: 55.3657, displayName: 'Dubai International Airport' },
+  AUH: { lat: 24.4330, lon: 54.6511, displayName: 'Zayed International Airport' },
 };
 
 function airportPoint(value: string): Point | null {
@@ -30,7 +38,7 @@ async function nominatim(address: string): Promise<Point | null> {
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
   url.searchParams.set('addressdetails', '0');
-  const response = await fetch(url, { headers: { 'User-Agent': userAgent, 'Accept-Language': 'en' }, cache: 'no-store' });
+  const response = await fetchWithTimeout(url, { headers: { 'User-Agent': userAgent, 'Accept-Language': 'en' }, cache: 'no-store' });
   if (!response.ok) return null;
   const data = await response.json() as Array<{ lat: string; lon: string; display_name: string }>;
   return data[0] ? { lat: Number(data[0].lat), lon: Number(data[0].lon), displayName: data[0].display_name } : null;
@@ -40,7 +48,7 @@ async function photon(address: string): Promise<Point | null> {
   const url = new URL('https://photon.komoot.io/api/');
   url.searchParams.set('q', address);
   url.searchParams.set('limit', '1');
-  const response = await fetch(url, { headers: { 'User-Agent': userAgent, 'Accept-Language': 'en' }, cache: 'no-store' });
+  const response = await fetchWithTimeout(url, { headers: { 'User-Agent': userAgent, 'Accept-Language': 'en' }, cache: 'no-store' });
   if (!response.ok) return null;
   const data = await response.json() as { features?: Array<{ geometry?: { coordinates?: [number, number] }; properties?: { name?: string; city?: string; country?: string } }> };
   const feature = data.features?.[0];
@@ -83,7 +91,7 @@ function transitEstimate(country: string, km: number, drivingMinutes: number) {
 
 async function roadRoute(origin: Point, destination: Point) {
   const url = `https://router.project-osrm.org/route/v1/driving/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=false&alternatives=false&steps=false`;
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetchWithTimeout(url, { cache: 'no-store' }, 5000);
   if (!response.ok) return null;
   const data = await response.json() as { routes?: Array<{ distance: number; duration: number }> };
   return data.routes?.[0] || null;
@@ -115,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     if (body.destination) {
       const destination = await geocode(body.destination.trim(), body.destinationCandidates);
-      if (!destination) return NextResponse.json({ error: 'The hotel address could not be located. Include street, postcode, city and country.' }, { status: 404 });
+      if (!destination) return NextResponse.json({ error: 'The destination could not be located. Try a clearer landmark, venue, street address or postcode.' }, { status: 404 });
       const route = await roadRoute(origin, destination);
       if (!route) return NextResponse.json({ error: 'No road route was found.' }, { status: 404 });
       const km = route.distance / 1000, drivingMinutes = Math.round(route.duration / 60);
@@ -125,7 +133,7 @@ export async function POST(request: NextRequest) {
     const destinations = (body.destinations || []).filter(d => d.id && Number.isFinite(d.lat) && Number.isFinite(d.lon)).slice(0, 100);
     if (!destinations.length) return NextResponse.json({ error: 'No destination coordinates were supplied.' }, { status: 400 });
     const coordinates = [`${origin.lon},${origin.lat}`, ...destinations.map(d => `${d.lon},${d.lat}`)].join(';');
-    const tableResponse = await fetch(`https://router.project-osrm.org/table/v1/driving/${coordinates}?sources=0&annotations=distance,duration`, { cache: 'no-store' });
+    const tableResponse = await fetchWithTimeout(`https://router.project-osrm.org/table/v1/driving/${coordinates}?sources=0&annotations=distance,duration`, { cache: 'no-store' }, 6000);
     if (!tableResponse.ok) throw new Error('Routing provider failed');
     const table = await tableResponse.json() as { distances?: Array<Array<number | null>>; durations?: Array<Array<number | null>> };
     const distances = table.distances?.[0] || [], durations = table.durations?.[0] || [];
