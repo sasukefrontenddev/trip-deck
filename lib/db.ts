@@ -40,7 +40,7 @@ export type Booking = {
 export type TripDocument = {
   id: string;
   traveler: TravelerName;
-  category: 'Passport' | 'Visa' | 'Ticket' | 'Insurance' | 'Hotel' | 'Other';
+  category: 'Passport' | 'Visa' | 'Ticket' | 'Insurance' | 'Hotel' | 'Itinerary' | 'Other';
   name: string;
   type: string;
   size: number;
@@ -48,7 +48,7 @@ export type TripDocument = {
   blob: Blob;
 };
 
-export type ItineraryItem = { id: string; title: string; location: string; date: string; time: string; country: CountryName; notes?: string; attractionId?: string; period?: DayPeriod };
+export type ItineraryItem = { id: string; title: string; location: string; date: string; time: string; country: CountryName; notes?: string; attractionId?: string; period?: DayPeriod; source?: 'manual' | 'pdf'; sourceDocumentId?: string; commuteFrom?: string; distanceKm?: number; commuteMinutes?: number; commuteMode?: string; commuteCost?: number; commuteCurrency?: string; commuteNote?: string; activityCost?: number; activityCurrency?: string };
 export type ChecklistItem = { id: string; title: string; category: string; done: boolean };
 export type Expense = {
   id: string; title: string; amount: number; currency: string; country: CountryName;

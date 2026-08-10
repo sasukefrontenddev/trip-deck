@@ -21,6 +21,7 @@ import {
   ItineraryItem, put, remove, TRAVELERS, TravelerName, TripDocument
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
+import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
 
 const TRAVELER_COUNT_BY_COUNTRY: Record<CountryName, number> = { Malaysia: 5, Singapore: 6, Indonesia: 5 };
 const COUNTRY_TRAVELERS: Record<CountryName, TravelerName[]> = {
@@ -126,6 +127,9 @@ export default function Home() {
   const [expenseCountry, setExpenseCountry] = useState<CountryName>('Malaysia');
   const [scrollProgress, setScrollProgress] = useState(0);
   const [explorerCountry, setExplorerCountry] = useState<CountryName>('Malaysia');
+  const [itineraryCountry, setItineraryCountry] = useState<CountryName>('Malaysia');
+  const [itineraryImporting, setItineraryImporting] = useState(false);
+  const [itineraryImportStatus, setItineraryImportStatus] = useState('');
   const [now, setNow] = useState(() => Date.now());
 
   async function refresh() {
@@ -253,6 +257,43 @@ export default function Home() {
     await refresh();
   }
 
+  async function importItineraryPdf(file?: File) {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return alert('Please select a PDF itinerary.');
+    setItineraryImporting(true); setItineraryImportStatus('Reading PDF…');
+    try {
+      const documentId = crypto.randomUUID();
+      await put('documents', { id: documentId, traveler, category: 'Itinerary', name: file.name, type: file.type || 'application/pdf', size: file.size, createdAt: new Date().toISOString(), blob: file });
+      const lines = await extractPdfLines(file);
+      setItineraryImportStatus('Structuring days and times…');
+      let parsed = parseItineraryLines(lines, itineraryCountry).map(item => ({ ...item, sourceDocumentId: documentId }));
+      if (!parsed.length) throw new Error('No itinerary activities could be extracted from this PDF.');
+      parsed = parsed.sort((a,b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
+      setItineraryImportStatus(`Calculating commute details for ${parsed.length} activities…`);
+      const enriched: ItineraryItem[] = [];
+      for (const item of parsed) {
+        const previous = [...enriched].reverse().find(x => x.country === item.country && x.date === item.date);
+        const hotel = hotels.find(h => h.country === item.country);
+        const origin = previous?.location || (hotel && !hotel.name.startsWith('Add ') ? hotel.address : '');
+        let next: ItineraryItem = { ...item, commuteFrom: origin || undefined };
+        if (online && origin && item.location && origin.toLowerCase() !== item.location.toLowerCase()) {
+          try {
+            const response = await fetch('/api/travel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ origin, destination:item.location, country:item.country, originCandidates:[`${origin}, ${item.country}`], destinationCandidates:[`${item.location}, ${item.country}`] }) });
+            const route = await response.json();
+            if (response.ok) next = { ...next, distanceKm: route.distanceKm, commuteMinutes: route.transit?.minutes || route.drivingMinutes, commuteMode: route.transit?.mode || 'Drive / taxi', commuteCost: route.transit?.cost, commuteCurrency: route.transit?.currency, commuteNote: route.transit?.note || 'Estimated route' };
+          } catch { /* keep imported item without route estimate */ }
+        }
+        enriched.push(next);
+      }
+      for (const item of enriched) await put('itinerary', item);
+      await refresh();
+      setItineraryCountry(enriched[0]?.country || itineraryCountry);
+      setItineraryImportStatus(`Imported ${enriched.length} activities from ${file.name}. Review any ambiguous locations or times.`);
+    } catch (error) {
+      setItineraryImportStatus(error instanceof Error ? error.message : 'Could not import this itinerary PDF.');
+    } finally { setItineraryImporting(false); }
+  }
+
   async function enableNotifications() {
     if (!('Notification' in window)) return alert('Notifications are not supported in this browser.');
     if (await Notification.requestPermission() === 'granted') new Notification('TripDeck reminders enabled', { body: 'Your travel reminders are enabled on this device.' });
@@ -376,12 +417,15 @@ export default function Home() {
       {tab === 'food' && <motion.section className="content" key="food" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><FoodGuide hotels={hotels} bookings={bookings}/></motion.section>}
       {tab === 'nearby' && <motion.section className="content" key="nearby" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}><NearbyHalal/></motion.section>}
 
-      {tab === 'itinerary' && <motion.section className="content" key="itinerary" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">DAY BY DAY</span><h3>Group itinerary</h3></div><button className="primary small" onClick={() => setShowAdd(true)}><PlusIcon/> Add</button></div>{items.length === 0 ? <Empty icon={<CalendarDaysIcon/>} title="No plans yet" text="Add activities, meals, transfers and reservations."/> : <div className="timeline">{[...items].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).map(item => <div className="timeline-row" key={item.id}><div className="time"><b>{formatDate(item.date)}</b><span>{item.time}</span></div><div className="dot"/><div className="timeline-card"><span>{item.country}</span><h4>{item.title}</h4><p>{item.location}</p><small>{item.notes}</small></div></div>)}</div>}</motion.section>}
+      {tab === 'itinerary' && <motion.section className="content itinerary-shell" key="itinerary" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">COUNTRY · DAY · TIME</span><h3>Detailed itinerary</h3></div><div className="itinerary-actions"><label className={`secondary small ${itineraryImporting ? 'disabled' : ''}`}><ArrowUpTrayIcon/>{itineraryImporting ? 'Importing…' : 'Import itinerary PDF'}<input type="file" accept="application/pdf,.pdf" hidden disabled={itineraryImporting} onChange={e => { const file=e.target.files?.[0]; importItineraryPdf(file); e.currentTarget.value=''; }}/></label><button className="primary small" onClick={() => setShowAdd(true)}><PlusIcon/> Add manually</button></div></div>
+        <div className="itinerary-country-tabs">{countries.map(country => { const count=items.filter(x=>x.country===country.name).length; return <button key={country.name} className={itineraryCountry===country.name?'active':''} onClick={()=>setItineraryCountry(country.name)}><span className={`flag-mini f${country.code}`}>{country.code}</span><div><b>{country.name}</b><small>{country.dates} · {count} plans</small></div></button>; })}</div>
+        <div className="itinerary-import-note"><DocumentTextIcon/><div><b>PDF itinerary importer</b><span>Upload a text-based PDF. TripDeck stores the original in Documents, extracts dates/times/places, groups everything by country and day, then estimates route time and public-transport cost between stops when online.</span>{itineraryImportStatus && <em>{itineraryImportStatus}</em>}</div></div>
+        {items.filter(x=>x.country===itineraryCountry).length === 0 ? <Empty icon={<CalendarDaysIcon/>} title={`No ${itineraryCountry} plans yet`} text="Import an itinerary PDF or add activities, meals, transfers and reservations manually."/> : <div className="itinerary-days">{Object.entries(items.filter(x=>x.country===itineraryCountry).sort((a,b)=>`${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).reduce<Record<string,ItineraryItem[]>>((acc,item)=>{(acc[item.date] ||= []).push(item);return acc;},{})).map(([date,dayItems],dayIndex)=><section className="itinerary-day glass" key={date}><header><div><span>DAY {dayIndex+1}</span><h4>{new Date(`${date}T12:00`).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</h4></div><b>{dayItems.length} stops</b></header><div className="timeline">{dayItems.map((item,index)=><div className="timeline-row itinerary-row" key={item.id}><div className="time"><b>{item.time}</b><span>{index===0?'Start':`Stop ${index+1}`}</span></div><div className="dot"/><div className="timeline-card rich-itinerary-card"><div className="itinerary-card-top"><span>{item.source==='pdf'?'PDF IMPORT':'MANUAL'}</span><button title="Delete" onClick={async()=>{await remove('itinerary',item.id);await refresh();}}><TrashIcon/></button></div><h4>{item.title}</h4><p><MapPinIcon/>{item.location}</p>{item.commuteMinutes && <div className="commute-strip"><div><small>FROM</small><b>{item.commuteFrom || 'Previous stop'}</b></div><div><small>COMMUTE</small><b>{item.commuteMinutes} min</b><span>{item.commuteMode}</span></div><div><small>DISTANCE</small><b>{item.distanceKm ? `${item.distanceKm} km` : '—'}</b></div><div><small>EST. COST</small><b>{item.commuteCost != null ? `${item.commuteCurrency} ${Number(item.commuteCost).toLocaleString()}` : '—'}</b><span>{item.commuteCost != null ? `~${item.commuteCurrency} ${(Number(item.commuteCost)*TRAVELER_COUNT_BY_COUNTRY[item.country]).toLocaleString()} for ${TRAVELER_COUNT_BY_COUNTRY[item.country]}` : ''}</span></div></div>}{item.activityCost != null && <div className="activity-cost"><small>ACTIVITY / BOOKING COST FOUND IN PDF</small><b>{item.activityCurrency} {Number(item.activityCost).toLocaleString()}</b></div>}{item.commuteNote && <small className="route-note">{item.commuteNote}</small>}{item.notes && <small className="itinerary-notes">{item.notes}</small>}</div></div>)}</div></section>)}</div>}</motion.section>}
 
       {tab === 'documents' && <motion.section className="content" key="documents" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">6 PRIVATE FOLDERS</span><h3>Traveler documents</h3></div></div>
         <div className="traveler-tabs">{TRAVELERS.map(name => <button key={name} className={traveler === name ? 'active' : ''} onClick={() => setTraveler(name)}><FolderIcon/><span>{name}</span><b>{documents.filter(d => d.traveler === name).length}</b></button>)}</div>
         <div className="vault-banner"><ShieldCheckIcon/><div><b>{traveler}&apos;s folder</b><span>Files are stored locally in IndexedDB and remain available offline on this device.</span></div></div>
-        <div className="upload-toolbar"><select value={docCategory} onChange={e => setDocCategory(e.target.value as TripDocument['category'])}><option>Passport</option><option>Visa</option><option>Ticket</option><option>Insurance</option><option>Hotel</option><option>Other</option></select><label className="primary small"><ArrowUpTrayIcon/> Upload for {traveler}<input type="file" multiple hidden onChange={e => uploadFiles(e.target.files)}/></label></div>
+        <div className="upload-toolbar"><select value={docCategory} onChange={e => setDocCategory(e.target.value as TripDocument['category'])}><option>Passport</option><option>Visa</option><option>Ticket</option><option>Insurance</option><option>Hotel</option><option>Itinerary</option><option>Other</option></select><label className="primary small"><ArrowUpTrayIcon/> Upload for {traveler}<input type="file" multiple hidden onChange={e => uploadFiles(e.target.files)}/></label></div>
         {selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="Upload passport copies, visas, tickets, insurance and hotel vouchers."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB</span></div><div className="doc-actions"><button onClick={() => { const u = URL.createObjectURL(doc.blob); window.open(u, '_blank'); }}>Open</button><button onClick={async () => { await remove('documents', doc.id); await refresh(); }}><TrashIcon/></button></div></article>)}</div>}
       </motion.section>}
 

@@ -319,3 +319,8 @@ Saved flights keep working offline. When the app is online, TripDeck refreshes f
 
 ## Singapore Arrival Card reminder
 TripDeck detects the saved flight arriving in Singapore (SIN / Singapore destination) and automatically calculates the SG Arrival Card submission window as the arrival date plus the two preceding calendar days. The home page shows when the window opens, switches to a `SUBMIT NOW` state during the valid window, links to the official Singapore ICA SGAC e-Service, and can be marked submitted. The completion state is stored in the synced checklist. If browser notifications are enabled, a one-time notification is sent when the submission window is open. If no Singapore flight has been saved yet, the current itinerary arrival date of 26 August 2026 is used as the fallback.
+
+## Country-wise itinerary + PDF importer
+The Itinerary tab is grouped by Malaysia, Singapore and Indonesia, then by day and time. Use **Import itinerary PDF** to save the original PDF into the Documents vault and convert a text-based itinerary into editable TripDeck entries. The importer detects common date/time/country/location/cost patterns. When online, TripDeck also geocodes consecutive stops and estimates distance, commute time, suggested public transport mode and per-person/group transport cost through the existing `/api/travel` route service.
+
+PDF text extraction uses PDF.js loaded from cdnjs on first import. This avoids adding a large parser package to the app bundle. Internet access is required the first time the PDF parser is loaded; the rest of TripDeck remains offline-first. Scanned/image-only PDFs need OCR before import. Imported results should be reviewed because PDF layouts vary and ambiguous locations/times cannot always be inferred perfectly.
