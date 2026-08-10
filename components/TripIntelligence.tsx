@@ -29,7 +29,7 @@ type Mode = 'Family' | 'Couple' | 'Balanced';
 const countryDates: Record<CountryName, string[]> = {
   Malaysia: ['2026-08-22','2026-08-23','2026-08-24','2026-08-25'],
   Singapore: ['2026-08-26','2026-08-27','2026-08-28','2026-08-29'],
-  Indonesia: ['2026-08-30','2026-08-31','2026-09-01','2026-09-02'],
+  Indonesia: ['2026-08-30','2026-08-31','2026-09-01','2026-09-02','2026-09-03'],
 };
 const cityCoords: Record<CountryName, [number, number]> = {
   Malaysia: [3.139, 101.6869], Singapore: [1.3521, 103.8198], Indonesia: [-6.2088, 106.8456]

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 type AeroFlight = {
   status?: string;
   airline?: { name?: string };
-  aircraft?: { model?: string; registration?: string };
+  aircraft?: { model?: string | { name?: string; code?: string }; registration?: string; modeS?: string; hexIcao?: string };
   departure?: {
     airport?: { name?: string; iata?: string; icao?: string };
     scheduledTime?: { local?: string; utc?: string };

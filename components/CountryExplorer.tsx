@@ -6,7 +6,7 @@ import type { Attraction, Booking, CountryName, DayPeriod, HotelStay, ItineraryI
 import { put } from '@/lib/db';
 
 const countries: CountryName[]=['Malaysia','Singapore','Indonesia'];
-const dates:Record<CountryName,string[]>={Malaysia:['2026-08-22','2026-08-23','2026-08-24','2026-08-25'],Singapore:['2026-08-26','2026-08-27','2026-08-28','2026-08-29'],Indonesia:['2026-08-30','2026-08-31','2026-09-01','2026-09-02']};
+const dates:Record<CountryName,string[]>={Malaysia:['2026-08-22','2026-08-23','2026-08-24','2026-08-25'],Singapore:['2026-08-26','2026-08-27','2026-08-28','2026-08-29'],Indonesia:['2026-08-30','2026-08-31','2026-09-01','2026-09-02','2026-09-03']};
 const time:Record<DayPeriod,string>={Morning:'09:00',Afternoon:'14:00',Evening:'18:30'};
 const money=(value?:number)=>Number.isFinite(value)?Number(value).toLocaleString():'—';
 const checked=(value?:string)=>value?new Date(`${value}T00:00`).toLocaleDateString('en-AE',{day:'numeric',month:'short',year:'numeric'}):'Not available';

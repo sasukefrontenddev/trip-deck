@@ -65,6 +65,7 @@ const starterChecklist: ChecklistItem[] = [
   { id: 'c4', title: 'eSIM / roaming plan ready', category: 'Connectivity', done: false },
   { id: 'c5', title: 'Airport transfers confirmed', category: 'Transport', done: false },
   { id: 'c6', title: 'Hotels and addresses confirmed', category: 'Stay', done: false },
+  { id: 'sgac-arrival-card', title: 'Singapore Arrival Card (SGAC) submitted', category: 'Entry requirement', done: false },
 ];
 
 type Tab = 'overview' | 'smart' | 'explorer' | 'food' | 'nearby' | 'bookings' | 'itinerary' | 'documents' | 'expenses' | 'stays' | 'toolkit';
@@ -79,6 +80,12 @@ const formatWallClock = (value: string) => {
   const [, year, month, day, hour, minute] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
   return date.toLocaleString(undefined, { year:'numeric', month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' });
+};
+
+const aircraftModelFromApi = (aircraft: any) => {
+  const model = aircraft?.model;
+  if (typeof model === 'string') return model;
+  return model?.name || model?.code || aircraft?.typeName || aircraft?.icaoCode || '';
 };
 
 const airlineCodeFor = (booking?: Booking) => {
@@ -133,7 +140,9 @@ export default function Home() {
     (async () => {
       // Remove flight placeholders from older builds. Only user-added flights should appear.
       for (const id of LEGACY_SAMPLE_FLIGHT_IDS) await remove('bookings', id);
-      if (!(await getAll('checklist')).length) for (const item of starterChecklist) await put('checklist', item);
+      const existingChecklist = await getAll('checklist');
+      if (!existingChecklist.length) for (const item of starterChecklist) await put('checklist', item);
+      else if (!existingChecklist.some(item => item.id === 'sgac-arrival-card')) await put('checklist', starterChecklist.find(item => item.id === 'sgac-arrival-card')!);
       if (!(await getAll('hotels')).length) for (const hotel of starterHotels) await put('hotels', hotel);
       const currentHotels = await getAll('hotels');
       const indonesiaHotel = currentHotels.find(h => h.id === 'hotel-ID');
@@ -189,7 +198,9 @@ export default function Home() {
             arrivalTerminal: f?.arrival?.terminal || booking.arrivalTerminal,
             arrivalGate: f?.arrival?.gate || booking.arrivalGate,
             checkInDesk: f?.departure?.checkInDesk || booking.checkInDesk,
-            aircraft: f?.aircraft?.model || f?.aircraft?.registration || booking.aircraft,
+            aircraft: aircraftModelFromApi(f?.aircraft) || booking.aircraft,
+            aircraftRegistration: f?.aircraft?.registration || booking.aircraftRegistration,
+            aircraftModeS: f?.aircraft?.modeS || f?.aircraft?.hexIcao || booking.aircraftModeS,
             providerStatus: f?.status || booking.providerStatus,
             status: f?.displayStatus || booking.status || 'EXPECTED',
             revisedDepartureTime: normalizeWallClock(f?.departure?.revisedTime?.local || f?.departure?.actualTime?.local || '') || booking.revisedDepartureTime,
@@ -248,20 +259,71 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!bookings.length || typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return;
-    const now = Date.now();
-    const upcoming = bookings.filter(b => b.reminderEnabled !== false && +new Date(b.date) > now && +new Date(b.date) - now <= 24 * 60 * 60 * 1000);
-    const stays = hotels.filter(h => h.reminderEnabled !== false && +new Date(`${h.checkIn}T15:00`) > now && +new Date(`${h.checkIn}T15:00`) - now <= 24 * 60 * 60 * 1000);
-    for (const booking of upcoming) {
-      const key = `tripdeck-reminder-${booking.id}-${booking.date.slice(0,10)}`;
-      if (!localStorage.getItem(key)) { new Notification(`Tomorrow: ${booking.title}`, { body: `${booking.departureAirport || booking.subtitle} · ${new Date(booking.date).toLocaleString()}` }); localStorage.setItem(key, 'sent'); }
-    }
-    for (const hotel of stays) {
-      const key = `tripdeck-hotel-${hotel.id}-${hotel.checkIn}`;
-      if (!localStorage.getItem(key)) { new Notification(`Hotel check-in tomorrow: ${hotel.name}`, { body: `${hotel.city} · Confirmation ${hotel.confirmation || 'not added'}` }); localStorage.setItem(key, 'sent'); }
-    }
+    if (typeof window === 'undefined') return;
+    const checkReminders = () => {
+      const currentTime = Date.now();
+      const upcoming = bookings.filter(b => b.type === 'flight' && b.reminderEnabled !== false && +new Date(b.date) > currentTime && +new Date(b.date) - currentTime <= 24 * 60 * 60 * 1000);
+      if ('Notification' in window && Notification.permission === 'granted') {
+        for (const booking of upcoming) {
+          const key = `tripdeck-checkin-${booking.id}-${booking.date.slice(0,10)}`;
+          if (!localStorage.getItem(key)) {
+            new Notification('Online check-in due', { body: `${booking.airline || ''} ${booking.flightNumber || booking.title} departs within 24 hours. Complete online check-in now. ${booking.terminal ? `Departure terminal ${booking.terminal}.` : ''}`.trim() });
+            localStorage.setItem(key, 'sent');
+          }
+        }
+        const stays = hotels.filter(h => h.reminderEnabled !== false && +new Date(`${h.checkIn}T15:00`) > currentTime && +new Date(`${h.checkIn}T15:00`) - currentTime <= 24 * 60 * 60 * 1000);
+        for (const hotel of stays) {
+          const key = `tripdeck-hotel-${hotel.id}-${hotel.checkIn}`;
+          if (!localStorage.getItem(key)) { new Notification(`Hotel check-in tomorrow: ${hotel.name}`, { body: `${hotel.city} · Confirmation ${hotel.confirmation || 'not added'}` }); localStorage.setItem(key, 'sent'); }
+        }
+      }
+    };
+    checkReminders();
+    const reminderTimer = window.setInterval(checkReminders, 30 * 60 * 1000);
+    return () => window.clearInterval(reminderTimer);
   }, [bookings, hotels]);
 
+  const checkInDueFlights = useMemo(() => bookings.filter(b => {
+    if (b.type !== 'flight' || b.reminderEnabled === false) return false;
+    const remaining = +new Date(b.date) - now;
+    return remaining > 0 && remaining <= 24 * 60 * 60 * 1000;
+  }).sort((a,b) => +new Date(a.date) - +new Date(b.date)), [bookings, now]);
+
+  const singaporeArrivalFlight = useMemo(() => bookings
+    .filter(b => b.type === 'flight' && (b.country === 'Singapore' || String(b.arrivalAirportCode || '').toUpperCase() === 'SIN' || /singapore|changi/i.test(`${b.arrivalAirport || ''} ${b.title || ''}`)))
+    .sort((a,b) => +new Date(a.arrivalTime || a.date) - +new Date(b.arrivalTime || b.date))[0], [bookings]);
+  const sgacArrivalDate = (singaporeArrivalFlight?.arrivalTime || singaporeArrivalFlight?.date || '2026-08-26T12:00').slice(0, 10);
+  const sgacWindowStart = useMemo(() => {
+    const [year, month, day] = sgacArrivalDate.split('-').map(Number);
+    return new Date(year, month - 1, day - 2, 0, 0, 0, 0).getTime();
+  }, [sgacArrivalDate]);
+  const sgacArrivalEnd = useMemo(() => {
+    const [year, month, day] = sgacArrivalDate.split('-').map(Number);
+    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+  }, [sgacArrivalDate]);
+  const sgacItem = checklist.find(item => item.id === 'sgac-arrival-card');
+  const sgacSubmitted = Boolean(sgacItem?.done);
+  const sgacIsOpen = now >= sgacWindowStart && now <= sgacArrivalEnd;
+  const sgacWindowLabel = new Date(sgacWindowStart).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const sgacArrivalLabel = new Date(`${sgacArrivalDate}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || sgacSubmitted || !sgacIsOpen) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const key = `tripdeck-sgac-${sgacArrivalDate}`;
+    if (localStorage.getItem(key)) return;
+    new Notification('Singapore Arrival Card due', { body: `Your SGAC submission window is open for arrival on ${sgacArrivalLabel}. Submit it through the official Singapore ICA service before arrival.` });
+    localStorage.setItem(key, 'sent');
+  }, [sgacSubmitted, sgacIsOpen, sgacArrivalDate, sgacArrivalLabel]);
+
+  async function markSgacSubmitted() {
+    await put('checklist', { id: 'sgac-arrival-card', title: 'Singapore Arrival Card (SGAC) submitted', category: 'Entry requirement', done: true });
+    await refresh();
+  }
+
+  function openOfficialSgac() {
+    window.open('https://eservices.ica.gov.sg/sgarrivalcard/', '_blank', 'noopener,noreferrer');
+  }
 
   function exportTrip() {
     const payload = { travelers: TRAVELERS, bookings, itinerary: items, checklist, expenses, hotels, attractions, exportedAt: new Date().toISOString() };
@@ -287,10 +349,16 @@ export default function Home() {
       <div className="pass-countdown"><span>DEPARTURE COUNTDOWN</span>{flightCountdown ? <div className="countdown-grid"><div><b>{String(flightCountdown.days).padStart(2,'0')}</b><small>DAYS</small></div><div><b>{String(flightCountdown.hours).padStart(2,'0')}</b><small>HRS</small></div><div><b>{String(flightCountdown.minutes).padStart(2,'0')}</b><small>MIN</small></div><div><b>{String(flightCountdown.seconds).padStart(2,'0')}</b><small>SEC</small></div></div> : <strong>Add a flight to start countdown</strong>}</div>
       <div className="pass-divider"/>
       <div className="pass-meta detailed"><div><span>PASSENGERS</span><b>{nextBooking ? TRAVELER_COUNT_BY_COUNTRY[nextBooking.country] : 5}</b></div><div><span>PNR</span><b>{nextBooking?.confirmation || 'ADD PNR'}</b></div><div><span>DEP. TERMINAL</span><b>{nextBooking?.terminal || '—'}</b></div><div><span>GATE</span><b>{nextBooking?.gate || '—'}</b></div><div><span>STATUS</span><b>{nextBooking?.status || 'EXPECTED'}</b></div></div>
-      <div className="pass-extra-meta"><div><span>ARRIVAL</span><b>{nextBooking?.arrivalTime ? formatWallClock(nextBooking.arrivalTime) : '—'}</b></div><div><span>ARR. TERMINAL</span><b>{nextBooking?.arrivalTerminal || '—'}</b></div><div><span>CHECK-IN</span><b>{nextBooking?.checkInDesk || '—'}</b></div><div><span>AIRCRAFT</span><b>{nextBooking?.aircraft || '—'}</b></div></div>
+      <div className="pass-extra-meta"><div><span>ARRIVAL</span><b>{nextBooking?.arrivalTime ? formatWallClock(nextBooking.arrivalTime) : '—'}</b></div><div><span>ARR. TERMINAL</span><b>{nextBooking?.arrivalTerminal || '—'}</b></div><div><span>CHECK-IN</span><b>{nextBooking?.checkInDesk || '—'}</b></div><div><span>AIRCRAFT</span><b>{nextBooking?.aircraft || '—'}</b>{nextBooking?.aircraftRegistration && <small>{nextBooking.aircraftRegistration}</small>}</div></div>
       <div className="flight-history"><div className="flight-history-heading"><span>FLIGHTS TAKEN</span><b>{takenFlights.length}</b></div>{takenFlights.length ? <div className="flight-history-list">{takenFlights.map(f => <div className="taken-flight" key={f.id}><AirlineLogo booking={f} small/><div><b>{f.flightNumber || f.airline || 'Flight'}</b><span>{f.departureAirportCode || f.title?.split('→')[0]?.trim() || '---'} → {f.arrivalAirportCode || f.title?.split('→')[1]?.trim() || '---'}</span></div><small>{formatDate(f.date)}</small></div>)}</div> : <div className="flight-history-empty">Your completed flights will appear here automatically.</div>}</div>
       <div className="pass-footer"><div className="barcode">|||| ||| || |||| | ||| ||||||</div><span>{nextBooking?.providerLastChecked ? `Live status checked ${new Date(nextBooking.providerLastChecked).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : 'Save flight details to complete this pass'}</span></div>
     </motion.div></section>
+    {checkInDueFlights.length > 0 && <section className="checkin-alert glass"><BellIcon/><div><b>Online check-in due</b><span>{checkInDueFlights[0].airline || 'Your airline'} {checkInDueFlights[0].flightNumber || checkInDueFlights[0].title} departs within 24 hours · {formatWallClock(checkInDueFlights[0].date)}{checkInDueFlights[0].terminal ? ` · Terminal ${checkInDueFlights[0].terminal}` : ''}</span></div><button onClick={enableNotifications}>Enable alerts</button></section>}
+    <section className={`sgac-alert glass ${sgacSubmitted ? 'complete' : sgacIsOpen ? 'due' : ''}`}>
+      <ShieldCheckIcon/>
+      <div className="sgac-copy"><div className="sgac-title-row"><b>Singapore Arrival Card (SGAC)</b><span>{sgacSubmitted ? 'SUBMITTED' : sgacIsOpen ? 'SUBMIT NOW' : `OPENS ${sgacWindowLabel.toUpperCase()}`}</span></div><p>{sgacSubmitted ? `Marked complete for your ${sgacArrivalLabel} Singapore arrival.` : sgacIsOpen ? `Your valid SGAC submission window is open. Submit it before arriving in Singapore on ${sgacArrivalLabel} to avoid immigration delays.` : `For your ${sgacArrivalLabel} Singapore arrival, submit the SGAC from ${sgacWindowLabel} through arrival day. TripDeck will alert you when the window opens.`}</p><small>Official Singapore ICA service · submission is free</small></div>
+      <div className="sgac-actions"><button className="secondary small" onClick={openOfficialSgac}>Open official SGAC</button>{!sgacSubmitted && <button className="primary small" onClick={markSgacSubmitted}><CheckCircleIcon/> Mark submitted</button>}</div>
+    </section>
 
     <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'food', 'nearby', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
 
@@ -298,7 +366,7 @@ export default function Home() {
       {tab === 'overview' && <motion.section className="content" key="overview" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <div className="quick-stats"><Stat icon={<UserGroupIcon/>} value="6" label="Travelers"/><Stat icon={<DocumentTextIcon/>} value={String(documents.length)} label="Saved documents"/><Stat icon={<BuildingOffice2Icon/>} value={String(hotels.length)} label="Hotel stays"/><Stat icon={<SparklesIcon/>} value={String(attractions.filter(a => a.saved).length)} label="Saved attractions"/></div>
         <div className="section-heading"><div><span className="eyebrow">THE ROUTE</span><h3>Country overview</h3></div><button className="text-button" onClick={enableNotifications}><BellIcon/> Reminders</button></div>
-        <div className="country-grid">{countries.map((c, i) => <motion.button type="button" className="country-card country-card-button" key={c.code} onClick={() => { setExplorerCountry(c.name); setTab('explorer'); }} initial={{ opacity: 0, y: 32 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: .25 }} transition={{ delay: i * .1 }} whileHover={{ y: -8, rotateX: 2 }}><span className="number">0{i + 1}</span><div className={`flag f${c.code}`}>{c.code}</div><h4>{c.name}</h4><p>{c.dates}</p><small>{c.city} · {c.vibe}</small><b className="explore-label">Explore attractions →</b></motion.button>)}</div>
+        <div className="country-grid">{countries.map((c, i) => <motion.button type="button" className="country-card country-card-button" key={c.code} onClick={() => { setExplorerCountry(c.name); setTab('explorer'); }} initial={{ opacity: 0, y: 32 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: .25 }} transition={{ delay: i * .1 }} whileHover={{ y: -8, rotateX: 2 }}><span className="number">0{i + 1}</span><div className={`flag f${c.code}`}>{c.code}</div><h4>{c.name}</h4><p>{c.dates}</p><small>{c.city} · {c.vibe}</small><small>{TRAVELER_COUNT_BY_COUNTRY[c.name]} friends travelling</small><b className="explore-label">Explore attractions →</b></motion.button>)}</div>
         <div className="two-col"><section className="panel glass"><div className="panel-title"><h3>Bookings</h3><button onClick={() => setShowAdd(true)}><PlusIcon/></button></div>{bookings.map(b => <div className="booking" key={b.id}><div className="booking-icon">{b.type === 'flight' ? <PaperAirplaneIcon/> : <MapPinIcon/>}</div><div><b>{b.title}</b><span>{b.flightNumber ? `${b.flightNumber} · ` : ''}{b.subtitle}</span></div><div className="booking-right"><b>{formatDate(b.date)}</b><span>{b.confirmation}</span></div></div>)}<button className="gmail" onClick={() => setTab('bookings')}><PaperAirplaneIcon/> Manage flights manually <span>Lookup live schedule by flight number and date</span></button></section>
         <section className="panel glass"><div className="panel-title"><h3>Group readiness</h3><ShieldCheckIcon/></div><div className="progress"><span style={{ width: `${checklist.length ? prepDone / checklist.length * 100 : 0}%` }}/></div><p className="muted">{prepDone} of {checklist.length} essentials ready</p><div className="mini-checks">{checklist.map(item => <label key={item.id}><input type="checkbox" checked={item.done} onChange={async () => { await put('checklist', { ...item, done: !item.done }); await refresh(); }}/><span>{item.title}</span></label>)}</div></section></div>
       </motion.section>}
@@ -330,7 +398,7 @@ export default function Home() {
         <div className="section-heading"><div><span className="eyebrow">MANUAL + LIVE SCHEDULE LOOKUP</span><h3>Flights and booking details</h3></div><button className="text-button" onClick={enableNotifications}><BellIcon/> Enable alerts</button></div>
         <div className="notice">Airline booking references are private reservation records. TripDeck stores your PNR manually and uses a flight-data provider to fetch schedules by flight number and travel date.</div>
         <FlightForm online={online} onSaved={refresh}/>
-        <div className="flight-list">{bookings.filter(b => b.type === 'flight').sort((a,b) => +new Date(a.date)-+new Date(b.date)).map((booking,index) => <motion.article className="flight-card glass" key={booking.id} initial={{opacity:0,y:22}} whileInView={{opacity:1,y:0}} viewport={{once:true}} transition={{delay:index*.05}}><div className="flight-route"><div><span>{booking.departureAirport || 'Origin'}</span><b>{booking.departureAirportCode || '---'}</b></div><PaperAirplaneIcon/><div><span>{booking.arrivalAirport || 'Destination'}</span><b>{booking.arrivalAirportCode || '---'}</b></div></div><div className="flight-details"><div><span>Flight</span><b>{booking.flightNumber || 'Add number'}</b></div><div><span>Departure</span><b>{formatWallClock(booking.date)}</b></div><div><span>PNR</span><b>{booking.confirmation || 'Not added'}</b></div><div><span>Status</span><b>{booking.status || 'Saved offline'}</b></div></div><div className="flight-actions"><span>{booking.providerLastChecked ? `Updated ${new Date(booking.providerLastChecked).toLocaleString()}` : 'Manual details'}</span><button onClick={async()=>{await remove('bookings',booking.id);await refresh();}}><TrashIcon/> Remove</button></div></motion.article>)}</div>
+        <div className="flight-list">{bookings.filter(b => b.type === 'flight').sort((a,b) => +new Date(a.date)-+new Date(b.date)).map((booking,index) => <motion.article className="flight-card glass" key={booking.id} initial={{opacity:0,y:22}} whileInView={{opacity:1,y:0}} viewport={{once:true}} transition={{delay:index*.05}}><div className="flight-route"><div><span>{booking.departureAirport || 'Origin'}</span><b>{booking.departureAirportCode || '---'}</b></div><PaperAirplaneIcon/><div><span>{booking.arrivalAirport || 'Destination'}</span><b>{booking.arrivalAirportCode || '---'}</b></div></div><div className="flight-details"><div><span>Flight</span><b>{booking.flightNumber || 'Add number'}</b></div><div><span>Departure</span><b>{formatWallClock(booking.date)}</b></div><div><span>Dep. terminal</span><b>{booking.terminal || '—'}</b></div><div><span>Arr. terminal</span><b>{booking.arrivalTerminal || '—'}</b></div><div><span>Aircraft</span><b>{booking.aircraft || '—'}</b>{booking.aircraftRegistration && <small>{booking.aircraftRegistration}</small>}</div><div><span>PNR</span><b>{booking.confirmation || 'Not added'}</b></div><div><span>Status</span><b>{booking.status || 'Saved offline'}</b></div></div><div className="flight-actions"><span>{booking.providerLastChecked ? `Updated ${new Date(booking.providerLastChecked).toLocaleString()}` : 'Manual details'}</span><button onClick={async()=>{await remove('bookings',booking.id);await refresh();}}><TrashIcon/> Remove</button></div></motion.article>)}</div>
       </motion.section>}
 
       {tab === 'toolkit' && <motion.section className="content" key="toolkit" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">TRAVEL SMARTER</span><h3>Group toolkit</h3></div><button className="secondary small" onClick={exportTrip}><ArrowDownTrayIcon/> Backup data</button></div><div className="tool-grid"><section className="panel glass"><div className="panel-title"><h3>Checklist</h3><ClipboardDocumentCheckIcon/></div><div className="checklist">{checklist.map(item => <label key={item.id} className={item.done ? 'done' : ''}><input type="checkbox" checked={item.done} onChange={async () => { await put('checklist', { ...item, done: !item.done }); await refresh(); }}/><div><b>{item.title}</b><span>{item.category}</span></div></label>)}</div></section><section className="panel glass emergency"><div className="panel-title"><h3>Emergency card</h3><PhoneIcon/></div><div className="emergency-list"><div><b>Malaysia</b><span>Emergency: 999</span></div><div><b>Singapore</b><span>Police: 999 · Fire/Ambulance: 995</span></div><div><b>Indonesia</b><span>Emergency: 112</span></div></div></section></div></motion.section>}
@@ -426,7 +494,7 @@ function FlightForm({ online, onSaved }: { online: boolean; onSaved: () => void 
     // The date selected by the traveler is authoritative. Never let API timezone
     // conversion move it to the previous UTC/calendar day.
     const departure = `${travelDate}T${departureTime}`;
-    await put('bookings', { id: crypto.randomUUID(), type:'flight', title:`${String(formData.get('originCode')).toUpperCase()} → ${String(formData.get('destinationCode')).toUpperCase()}`, subtitle:`${String(formData.get('airline') || '')} ${String(formData.get('flightNumber'))}`.trim(), date: departure, travelDate, confirmation:String(formData.get('confirmation') || ''), country:String(formData.get('country')) as CountryName, airline:String(formData.get('airline') || f?.airline?.name || ''), flightNumber:String(formData.get('flightNumber')), departureAirport:String(formData.get('departureAirport') || f?.departure?.airport?.name || ''), departureAirportCode:String(formData.get('originCode') || f?.departure?.airport?.iata || ''), arrivalAirport:String(formData.get('arrivalAirport') || f?.arrival?.airport?.name || ''), arrivalAirportCode:String(formData.get('destinationCode') || f?.arrival?.airport?.iata || ''), arrivalTime:normalizeWallClock(f?.arrival?.actualTime?.local || f?.arrival?.revisedTime?.local || f?.arrival?.scheduledTime?.local || String(formData.get('arrivalTime') || '')), revisedDepartureTime:normalizeWallClock(f?.departure?.revisedTime?.local || f?.departure?.actualTime?.local || ''), revisedArrivalTime:normalizeWallClock(f?.arrival?.revisedTime?.local || f?.arrival?.actualTime?.local || ''), terminal:f?.departure?.terminal || '', gate:f?.departure?.gate || '', arrivalTerminal:f?.arrival?.terminal || '', arrivalGate:f?.arrival?.gate || '', checkInDesk:f?.departure?.checkInDesk || '', aircraft:f?.aircraft?.model || f?.aircraft?.registration || '', providerStatus:f?.status || '', status:f?.displayStatus || (f?.status ? String(f.status).toUpperCase() : 'EXPECTED'), providerLastChecked:f ? new Date().toISOString() : undefined, reminderEnabled:true }); setLookup(null); setMessage('Flight saved and synced, with offline access and a one-day reminder.'); onSaved();
+    await put('bookings', { id: crypto.randomUUID(), type:'flight', title:`${String(formData.get('originCode')).toUpperCase()} → ${String(formData.get('destinationCode')).toUpperCase()}`, subtitle:`${String(formData.get('airline') || '')} ${String(formData.get('flightNumber'))}`.trim(), date: departure, travelDate, confirmation:String(formData.get('confirmation') || ''), country:String(formData.get('country')) as CountryName, airline:String(formData.get('airline') || f?.airline?.name || ''), flightNumber:String(formData.get('flightNumber')), departureAirport:String(formData.get('departureAirport') || f?.departure?.airport?.name || ''), departureAirportCode:String(formData.get('originCode') || f?.departure?.airport?.iata || ''), arrivalAirport:String(formData.get('arrivalAirport') || f?.arrival?.airport?.name || ''), arrivalAirportCode:String(formData.get('destinationCode') || f?.arrival?.airport?.iata || ''), arrivalTime:normalizeWallClock(f?.arrival?.actualTime?.local || f?.arrival?.revisedTime?.local || f?.arrival?.scheduledTime?.local || String(formData.get('arrivalTime') || '')), revisedDepartureTime:normalizeWallClock(f?.departure?.revisedTime?.local || f?.departure?.actualTime?.local || ''), revisedArrivalTime:normalizeWallClock(f?.arrival?.revisedTime?.local || f?.arrival?.actualTime?.local || ''), terminal:f?.departure?.terminal || '', gate:f?.departure?.gate || '', arrivalTerminal:f?.arrival?.terminal || '', arrivalGate:f?.arrival?.gate || '', checkInDesk:f?.departure?.checkInDesk || '', aircraft:aircraftModelFromApi(f?.aircraft), aircraftRegistration:f?.aircraft?.registration || '', aircraftModeS:f?.aircraft?.modeS || f?.aircraft?.hexIcao || '', providerStatus:f?.status || '', status:f?.displayStatus || (f?.status ? String(f.status).toUpperCase() : 'EXPECTED'), providerLastChecked:f ? new Date().toISOString() : undefined, reminderEnabled:true }); setLookup(null); setMessage('Flight saved and synced, with offline access and a one-day reminder.'); onSaved();
   }
   return <form className="flight-form glass" action={submit} ref={form => { if (form) (form as any).__lookup = () => fetchFlight(form); }}><div className="panel-title"><h3>Add flight</h3><PaperAirplaneIcon/></div><div className="flight-form-grid"><input name="flightNumber" required placeholder="Flight number e.g. EK342"/><DateTimePicker name="travelDate" min="2026-08-21" required/><button type="button" className="secondary" disabled={!online || loading} onClick={e=>fetchFlight(e.currentTarget.form!)}>{loading?'Checking…':'Fetch schedule'}</button><input name="confirmation" placeholder="Booking number / PNR"/><input name="airline" placeholder="Airline"/><select name="country"><option>Malaysia</option><option>Singapore</option><option>Indonesia</option></select><input name="originCode" required placeholder="Origin IATA e.g. DXB"/><input name="departureAirport" placeholder="Departure airport"/><DateTimePicker name="departureTime" mode="datetime" required/><input name="destinationCode" required placeholder="Destination IATA e.g. KUL"/><input name="arrivalAirport" placeholder="Arrival airport"/><DateTimePicker name="arrivalTime" mode="datetime"/></div>{message&&<div className="notice">{message}</div>}{lookup&&<div className="lookup-preview"><CheckCircleIcon/><div><b>Schedule loaded</b><span>{String((lookup as any).departure?.airport?.name || '')} → {String((lookup as any).arrival?.airport?.name || '')}</span></div></div>}<button className="primary"><PlusIcon/> Save flight & reminder</button></form>;
 }

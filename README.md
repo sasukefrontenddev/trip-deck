@@ -311,3 +311,11 @@ Before deploying:
 ## Live flight status behaviour
 
 Saved flights keep working offline. When the app is online, TripDeck refreshes flights that are within 36 hours of departure (and up to 12 hours after the scheduled departure) every five minutes and whenever the tab becomes active again. The latest AeroDataBox status, departure/arrival revisions, terminals, gates, check-in desk and aircraft details are persisted back to the local cache and configured Redis database. The home boarding pass automatically moves to the next future flight after the current flight departs/enters flight or lands.
+
+## Flight-data enhancements
+- AeroDataBox lookup/live refresh stores departure terminal, arrival terminal, gate/check-in data, aircraft model and aircraft registration when supplied by the provider.
+- Flights within 24 hours show an in-app online check-in alert. If browser notifications are enabled, the device also receives a one-time online check-in notification while TripDeck is running/open.
+- Group sizes are country-aware: Malaysia 5, Singapore 6, Indonesia 5. These counts are used on the boarding pass and expense splitting.
+
+## Singapore Arrival Card reminder
+TripDeck detects the saved flight arriving in Singapore (SIN / Singapore destination) and automatically calculates the SG Arrival Card submission window as the arrival date plus the two preceding calendar days. The home page shows when the window opens, switches to a `SUBMIT NOW` state during the valid window, links to the official Singapore ICA SGAC e-Service, and can be marked submitted. The completion state is stored in the synced checklist. If browser notifications are enabled, a one-time notification is sent when the submission window is open. If no Singapore flight has been saved yet, the current itinerary arrival date of 26 August 2026 is used as the fallback.
