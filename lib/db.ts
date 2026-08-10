@@ -140,6 +140,31 @@ function fromCloudValue(store: TripStoreName, value: any) {
 }
 
 const DOCUMENT_CHUNK_SIZE = 300_000;
+
+async function withRetry<T>(operation: () => Promise<T>, attempts = 3, delayMs = 350): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try { return await operation(); }
+    catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Cloud request failed');
+}
+
+async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>) {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+}
+
 async function syncDocumentToCloud(value: any) {
   if (!(value?.blob instanceof Blob)) {
     await cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}`, { method: 'PUT', body: JSON.stringify({ value }) });
@@ -151,9 +176,9 @@ async function syncDocumentToCloud(value: any) {
   for (let offset = 0; offset < dataUrl.length; offset += DOCUMENT_CHUNK_SIZE) chunks.push(dataUrl.slice(offset, offset + DOCUMENT_CHUNK_SIZE));
   // Upload encrypted payload chunks first. The metadata pointer is committed last so
   // another device never sees a document whose payload is only partially uploaded.
-  await Promise.all(chunks.map((chunk, index) =>
-    cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}/chunks/${index}`, { method: 'PUT', body: JSON.stringify({ chunk }) })
-  ));
+  await mapWithConcurrency(chunks, 3, async (chunk, index) => {
+    await withRetry(() => cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}/chunks/${index}`, { method: 'PUT', body: JSON.stringify({ chunk }) }), 3);
+  });
   const { blobDataUrl: _blobDataUrl, ...metadata } = cloudValue;
   await cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}`, {
     method: 'PUT',
@@ -166,11 +191,12 @@ async function downloadDocumentFromCloud(raw: any): Promise<any | null> {
   const count = Number(raw?.blobChunkCount || 0);
   if (!count) return null;
   try {
-    const pieces = await Promise.all(Array.from({ length: count }, async (_, index) => {
-      const result = await cloudRequest(`/api/data/documents/${encodeURIComponent(raw.id)}/chunks/${index}`) as { chunk?: string };
+    const pieces = new Array<string>(count);
+    await mapWithConcurrency(Array.from({ length: count }, (_, index) => index), 4, async (index) => {
+      const result = await withRetry(() => cloudRequest(`/api/data/documents/${encodeURIComponent(raw.id)}/chunks/${index}`), 3) as { chunk?: string };
       if (typeof result?.chunk !== 'string') throw new Error('missing document chunk');
-      return result.chunk;
-    }));
+      pieces[index] = result.chunk;
+    });
     return fromCloudValue('documents', { ...raw, blobDataUrl: pieces.join('') });
   } catch {
     return null;
@@ -179,7 +205,7 @@ async function downloadDocumentFromCloud(raw: any): Promise<any | null> {
 async function cloudRequest(path: string, init?: RequestInit) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('offline');
   const controller = new AbortController();
-  const timeoutMs = path.startsWith('/api/data/documents') ? 12_000 : 4_500;
+  const timeoutMs = path.startsWith('/api/data/documents') ? 20_000 : 4_500;
   const timer = typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
     const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, cache: 'no-store', signal: init?.signal || controller.signal });
@@ -191,27 +217,52 @@ async function cloudRequest(path: string, init?: RequestInit) {
 }
 
 async function queueMutation(mutation: Omit<SyncMutation, 'id' | 'createdAt'>) {
-  const db = await dbPromise!; await db.put('syncQueue', { ...mutation, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
+  const db = await dbPromise!;
+  const id = crypto.randomUUID();
+  await db.put('syncQueue', { ...mutation, id, createdAt: new Date().toISOString() });
+  return id;
 }
 let flushPromise: Promise<void> | null = null;
-async function flushQueue() {
+async function flushQueue(priorityStore?: TripStoreName) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   if (flushPromise) return flushPromise;
   flushPromise = (async () => {
     const db = await dbPromise!;
-    const queued = await db.getAll('syncQueue');
-    for (const mutation of queued.sort((a,b) => a.createdAt.localeCompare(b.createdAt))) {
-      try {
-        if (mutation.operation === 'put') {
-          if (mutation.store === 'documents') await syncDocumentToCloud(mutation.value);
-          else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
-        } else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
-        await db.delete('syncQueue', mutation.id);
-      } catch { break; }
+    const attempted = new Set<string>();
+
+    // Drain mutations that existed when syncing started AND mutations created while the
+    // flush is in progress. Each mutation is attempted at most once per pass so a broken
+    // old record cannot create an infinite loop or block newer document uploads.
+    while (true) {
+      const queued = (await db.getAll('syncQueue')).filter(mutation => !attempted.has(mutation.id));
+      if (!queued.length) break;
+      const ordered = queued.sort((a, b) => {
+        if (priorityStore) {
+          const ap = a.store === priorityStore ? 0 : 1;
+          const bp = b.store === priorityStore ? 0 : 1;
+          if (ap !== bp) return ap - bp;
+        }
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+
+      for (const mutation of ordered) {
+        attempted.add(mutation.id);
+        try {
+          if (mutation.operation === 'put') {
+            if (mutation.store === 'documents') await syncDocumentToCloud(mutation.value);
+            else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
+          } else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
+          await db.delete('syncQueue', mutation.id);
+        } catch {
+          // Keep this mutation for the next sync pass, but continue with every later item.
+        }
+      }
     }
   })().finally(() => { flushPromise = null; });
   return flushPromise;
 }
+
+
 
 export async function getAll<T extends TripStoreName>(store: T): Promise<TripDB[T]['value'][]> {
   // Critical path is LOCAL ONLY. IndexedDB is the instant/offline source of truth.
@@ -226,7 +277,7 @@ export async function syncStoreFromCloud<T extends TripStoreName>(store: T): Pro
   const db = await dbPromise!;
   try {
     // Push pending local mutations first so a stale cloud copy cannot overwrite them.
-    await flushQueue();
+    await flushQueue(store);
     const remote = await cloudRequest(`/api/data/${store}`) as { values?: any[]; configured?: boolean };
     if (!remote?.configured || !Array.isArray(remote.values)) return false;
 
@@ -273,9 +324,10 @@ export async function syncAllFromCloud(stores: TripStoreName[] = ['bookings','do
   return results.some(result => result.status === 'fulfilled' && result.value);
 }
 
-function syncPutInBackground<T extends TripStoreName>(_store: T, _value: TripDB[T]['value']) {
-  // The mutation is already durable in IndexedDB's syncQueue. Flush it asynchronously.
-  void flushQueue();
+function syncPutInBackground<T extends TripStoreName>(store: T, _value: TripDB[T]['value']) {
+  // The mutation is already durable in IndexedDB's syncQueue. Prioritize the store that
+  // the user just changed so document uploads are not stuck behind unrelated retries.
+  void flushQueue(store);
 }
 
 export async function put<T extends TripStoreName>(store: T, value: TripDB[T]['value']) {
@@ -291,5 +343,5 @@ export async function remove<T extends TripStoreName>(store: T, key: string) {
   const db = await dbPromise!;
   await db.delete(store as any, key);
   await queueMutation({ store, operation: 'delete', key });
-  void flushQueue();
+  void flushQueue(store);
 }

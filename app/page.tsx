@@ -296,7 +296,17 @@ export default function Home() {
       // A phone/new browser may have the vault verifier already but not the encrypted file blobs yet.
       // Pull documents again immediately after a successful unlock, then refresh the folder when they land.
       if (navigator.onLine) {
-        void syncStoreFromCloud('documents').then(() => refresh());
+        void (async () => {
+          // Mobile networks can briefly fail one chunk request. Retry the cloud hydration a
+          // couple of times after unlock instead of showing an empty folder permanently.
+          for (let attempt = 0; attempt < 3; attempt++) {
+            await syncStoreFromCloud('documents');
+            await refresh();
+            const syncedDocs = (await getAll('documents')).filter(doc => doc.traveler === target);
+            if (syncedDocs.length) break;
+            if (attempt < 2) await new Promise(resolve => window.setTimeout(resolve, 900 * (attempt + 1)));
+          }
+        })();
       }
     } catch (error) {
       setVaultDialog(current => current ? { ...current, busy: false, error: error instanceof Error ? error.message : 'Could not unlock this folder.' } : current);

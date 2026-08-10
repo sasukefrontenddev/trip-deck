@@ -325,3 +325,7 @@ Each traveler document folder can now be protected with its own password. TripDe
 
 ## V21 — Cross-device private document sync
 Private encrypted document payloads are synchronized in chunks instead of one large Redis value. This makes vault documents reliable across desktop and mobile browsers. Opening Documents while online refreshes vault/document metadata, and unlocking a traveler vault triggers an immediate document pull. Existing legacy single-value cloud documents are migrated to chunked storage automatically, while documents that only exist in an older desktop IndexedDB are backfilled to Redis from that device.
+
+
+## Mobile document sync reliability
+Private document uploads now drain independently of failed/stale sync mutations, encrypted file chunks use bounded concurrency with retries, and a newly unlocked mobile vault retries cloud hydration automatically. This fixes the case where documents remained visible on the desktop IndexedDB cache but never reached a second device.
