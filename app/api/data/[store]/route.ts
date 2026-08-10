@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(_request: NextRequest, context: { params: Promise<{ store: string }> }) {
   const { store } = await context.params;
   if (!STORES.has(store)) return NextResponse.json({ error: 'Invalid store.' }, { status: 400 });
+  if (store === 'documents') return NextResponse.json({ error: 'Traveler-scoped document access is required.' }, { status: 403 });
   if (!redisConfigured) return NextResponse.json({ configured: false, values: [] });
   try {
     const result = await redisCommand<string[]>(['HVALS', `tripdeck:v1:${store}`]);

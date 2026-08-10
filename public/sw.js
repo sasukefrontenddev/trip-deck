@@ -1,4 +1,4 @@
-const CACHE = 'tripdeck-v9';
+const CACHE = 'tripdeck-v23-redis-private-docs';
 const APP_SHELL = ['/', '/icon.svg', '/tripdeck-logo.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));

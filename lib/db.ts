@@ -165,7 +165,7 @@ async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T
   await Promise.all(runners);
 }
 
-async function syncDocumentToCloud(value: any) {
+export async function syncDocumentToCloud(value: TripDocument) {
   if (!(value?.blob instanceof Blob)) {
     await cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}`, { method: 'PUT', body: JSON.stringify({ value }) });
     return;
@@ -319,9 +319,60 @@ export async function syncStoreFromCloud<T extends TripStoreName>(store: T): Pro
   }
 }
 
-export async function syncAllFromCloud(stores: TripStoreName[] = ['bookings','documents','itinerary','checklist','expenses','hotels','attractions','vaults']): Promise<boolean> {
+export async function syncAllFromCloud(stores: TripStoreName[] = ['bookings','itinerary','checklist','expenses','hotels','attractions','vaults']): Promise<boolean> {
   const results = await Promise.allSettled(stores.map(store => syncStoreFromCloud(store)));
   return results.some(result => result.status === 'fulfilled' && result.value);
+}
+
+
+export async function fetchTravelerDocumentsFromCloud(traveler: TravelerName): Promise<TripDocument[]> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const db = await dbPromise!;
+    return (await db.getAll('documents')).filter(doc => doc.traveler === traveler);
+  }
+  const db = await dbPromise!;
+  const response = await cloudRequest(`/api/data/documents/traveler/${encodeURIComponent(traveler)}`) as { values?: any[]; configured?: boolean };
+  if (!response?.configured || !Array.isArray(response.values)) return [];
+  const hydrated: TripDocument[] = [];
+  for (const raw of response.values) {
+    const value = await downloadDocumentFromCloud(raw);
+    if (!value || value.traveler !== traveler) continue;
+    await db.put('documents', value);
+    hydrated.push(value);
+  }
+  // Remove stale local copies for this traveler that no longer exist in Redis.
+  const remoteIds = new Set(hydrated.map(doc => doc.id));
+  const locals = (await db.getAll('documents')).filter(doc => doc.traveler === traveler);
+  await Promise.all(locals.filter(doc => !remoteIds.has(doc.id)).map(doc => db.delete('documents', doc.id)));
+  return hydrated.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function putDocumentCloudFirst(value: TripDocument): Promise<string> {
+  const db = await dbPromise!;
+  // Keep a local encrypted copy for offline access, but only report success after Redis has it.
+  await db.put('documents', value);
+  try {
+    await syncDocumentToCloud(value);
+    // Clear any queued duplicate upload for the same document.
+    const queued = await db.getAll('syncQueue');
+    await Promise.all(queued.filter(m => m.store === 'documents' && m.key === value.id && m.operation === 'put').map(m => db.delete('syncQueue', m.id)));
+  } catch (error) {
+    await queueMutation({ store: 'documents', operation: 'put', key: value.id, value });
+    throw error;
+  }
+  return value.id;
+}
+
+export async function removeDocumentCloudFirst(id: string): Promise<void> {
+  const db = await dbPromise!;
+  try {
+    await cloudRequest(`/api/data/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await db.delete('documents', id);
+    const queued = await db.getAll('syncQueue');
+    await Promise.all(queued.filter(m => m.store === 'documents' && m.key === id).map(m => db.delete('syncQueue', m.id)));
+  } catch (error) {
+    throw error;
+  }
 }
 
 function syncPutInBackground<T extends TripStoreName>(store: T, _value: TripDB[T]['value']) {

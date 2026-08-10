@@ -178,3 +178,172 @@ input:focus,select:focus,textarea:focus{border-color:rgba(131,243,199,.65)!impor
 /* V19: TripDeck-styled private vault dialog */
 .vault-modal-backdrop{position:fixed;inset:0;z-index:120;background:rgba(2,8,18,.72);backdrop-filter:blur(12px);display:grid;place-items:center;padding:20px}.vault-modal{width:min(470px,100%);background:linear-gradient(180deg,rgba(15,33,48,.98),rgba(8,22,37,.99));border:1px solid rgba(131,243,199,.22);box-shadow:0 30px 80px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.04);border-radius:24px;padding:26px;display:grid;gap:16px;color:var(--text)}.vault-modal-icon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:rgba(131,243,199,.1);border:1px solid rgba(131,243,199,.22);color:var(--mint)}.vault-modal-icon svg{width:28px}.vault-modal-copy{display:grid;gap:5px}.vault-modal-copy h3{font:700 24px 'Space Grotesk';margin:0}.vault-modal-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}.vault-field{display:grid;gap:7px}.vault-field>span{font-size:9px;letter-spacing:.13em;font-weight:800;color:#9db0be}.vault-field input{width:100%;height:48px;border-radius:13px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:var(--text);padding:0 14px;outline:none;transition:.18s}.vault-field input:focus{border-color:rgba(131,243,199,.55);box-shadow:0 0 0 3px rgba(131,243,199,.08);background:rgba(131,243,199,.04)}.vault-error{font-size:12px;padding:10px 12px;border-radius:11px;color:#ffb2b2;background:rgba(255,95,95,.08);border:1px solid rgba(255,95,95,.18)}.vault-modal-actions{display:grid;grid-template-columns:1fr 1.5fr;gap:9px;margin-top:2px}.vault-modal-actions button{min-height:44px;justify-content:center}.vault-modal-actions button svg{width:17px}.vault-privacy-note{text-align:center;color:var(--muted);opacity:.7;font-size:9px;line-height:1.5}.vault-banner{border:1px solid rgba(131,243,199,.2);background:rgba(131,243,199,.045);border-radius:16px;padding:13px 15px;display:flex;gap:12px;align-items:center;margin:12px 0}.vault-banner>svg{width:23px;color:var(--mint)}.vault-banner>div{display:grid;gap:3px}.vault-banner span{font-size:11px;color:var(--muted)}.upload-toolbar .secondary{border-color:rgba(255,255,255,.1);background:rgba(255,255,255,.045)}
 @media(max-width:560px){.vault-modal{padding:21px;border-radius:20px}.vault-modal-actions{grid-template-columns:1fr}.vault-modal-copy h3{font-size:21px}}
+
+/* V22: traveler-scoped Redis document sync + themed destructive confirmation */
+.document-cloud-status{display:flex;align-items:center;gap:12px;margin:10px 0 14px;padding:12px 14px;border:1px solid rgba(131,243,199,.18);border-radius:14px;background:rgba(131,243,199,.045)}
+.document-cloud-status>div{display:grid;gap:2px}.document-cloud-status b{font-size:12px}.document-cloud-status span{font-size:10px;color:var(--muted)}
+.document-cloud-spinner{width:18px!important;height:18px;border-radius:50%;border:2px solid rgba(131,243,199,.2);border-top-color:var(--mint);animation:docspin .8s linear infinite;flex:0 0 auto}@keyframes docspin{to{transform:rotate(360deg)}}
+.document-cloud-error{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;padding:11px 13px;border:1px solid rgba(255,115,115,.22);border-radius:13px;background:rgba(255,80,80,.06);color:#ffc1c1;font-size:11px;line-height:1.45}.document-cloud-error button{border:0;background:transparent;color:var(--mint);font-weight:800;cursor:pointer;white-space:nowrap}
+.delete-doc-modal{width:min(470px,100%);background:linear-gradient(180deg,rgba(15,33,48,.99),rgba(8,22,37,.99));border:1px solid rgba(255,116,116,.2);box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04);border-radius:24px;padding:26px;display:grid;gap:16px;color:var(--text)}
+.delete-doc-icon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:rgba(255,95,95,.08);border:1px solid rgba(255,95,95,.2);color:#ff8f8f}.delete-doc-icon svg{width:26px}
+.delete-doc-file{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07)}.delete-doc-file>svg{width:24px;color:var(--mint);flex:0 0 auto}.delete-doc-file>div{min-width:0;display:grid;gap:3px}.delete-doc-file b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.delete-doc-file span{font-size:10px;color:var(--muted)}
+.danger-action{min-height:44px;border:1px solid rgba(255,105,105,.28);border-radius:12px;background:rgba(255,83,83,.12);color:#ffb1b1;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}.danger-action:hover{background:rgba(255,83,83,.18)}.danger-action:disabled{opacity:.55;cursor:not-allowed}.danger-action svg{width:17px}
+@media(max-width:560px){.delete-doc-modal{padding:21px;border-radius:20px}.document-cloud-error{align-items:flex-start;flex-direction:column}.document-cloud-error button{padding:0}}
+
+/* V23: app-wide UI polish + readiness alignment */
+:root{
+  --control-bg:rgba(255,255,255,.055);
+  --control-border:rgba(160,184,203,.15);
+  --control-hover:rgba(255,255,255,.085);
+  --mint-soft:rgba(131,243,199,.085);
+}
+
+/* Consistent interaction language */
+button,a,input,select,textarea{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease,opacity .18s ease}
+button:not(:disabled):active{transform:translateY(1px)}
+button:disabled{cursor:not-allowed;opacity:.55}
+.primary:hover{box-shadow:0 16px 38px rgba(131,243,199,.25);filter:brightness(1.025)}
+.secondary:hover,.panel-title button:hover,.doc-actions button:hover,.expense-row button:hover{background:var(--control-hover);border-color:rgba(131,243,199,.22)}
+:focus-visible{outline:2px solid rgba(131,243,199,.75);outline-offset:2px}
+
+/* App shell, navigation and section rhythm */
+.topbar{min-height:72px}
+.tabs{gap:2px;box-shadow:0 12px 32px rgba(0,0,0,.16)}
+.tabs button{min-height:40px;font-weight:650;letter-spacing:-.01em}
+.content{width:100%}
+.section-heading{min-height:52px;align-items:center}
+.section-heading>div{min-width:0}
+.section-heading h3{line-height:1.08}
+.panel,.country-card,.hotel-card,.doc-card,.itinerary-day{overflow:hidden}
+.panel-title h3{line-height:1.08}
+
+/* Group readiness: checkbox sits directly beside its label */
+.mini-checks{gap:5px;margin-top:16px}
+.mini-checks label{
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr);
+  align-items:center;
+  column-gap:10px;
+  min-height:38px;
+  padding:7px 8px;
+  margin:0 -8px;
+  border-radius:10px;
+  color:#dbe4e9;
+  font-size:12px;
+  line-height:1.35;
+}
+.mini-checks label:hover{background:rgba(255,255,255,.03)}
+.mini-checks label span{display:block;margin:0;min-width:0}
+.mini-checks input,.checklist input{
+  appearance:none;
+  -webkit-appearance:none;
+  width:17px;
+  height:17px;
+  min-height:17px;
+  margin:0;
+  border-radius:5px;
+  border:1px solid rgba(177,199,215,.42);
+  background:rgba(255,255,255,.055);
+  display:grid;
+  place-content:center;
+  flex:none;
+}
+.mini-checks input::before,.checklist input::before{
+  content:"";
+  width:8px;
+  height:5px;
+  border-left:2px solid #06231b;
+  border-bottom:2px solid #06231b;
+  transform:rotate(-45deg) scale(0);
+  transform-origin:center;
+  transition:transform .13s ease;
+  margin-top:-2px;
+}
+.mini-checks input:checked,.checklist input:checked{background:var(--mint);border-color:var(--mint)}
+.mini-checks input:checked::before,.checklist input:checked::before{transform:rotate(-45deg) scale(1)}
+.checklist label{align-items:center;min-height:52px}
+.checklist label>div{min-width:0;gap:2px}
+.checklist label b{line-height:1.35}
+.checklist label span{line-height:1.35}
+
+/* Cards and lists */
+.booking{min-height:72px;padding:14px 0}
+.booking:last-child{border-bottom:0}
+.booking-icon{flex:none}
+.country-card{display:flex;flex-direction:column}
+.country-card small{margin-top:auto;padding-top:12px}
+.stat{min-height:78px}
+.hotel-card,.doc-card,.timeline-card,.itinerary-day{border:1px solid rgba(160,184,203,.13)}
+.doc-card{min-height:78px}
+.doc-actions button{width:36px;height:36px;display:grid;place-items:center;padding:0}
+.empty{min-height:250px;display:grid;place-items:center;align-content:center;gap:4px}
+.empty h4{margin:8px 0 2px}
+
+/* Inputs and toolbars */
+.upload-toolbar{align-items:center;flex-wrap:wrap}
+.upload-toolbar select{min-width:180px}
+.modal input,.modal select,.modal textarea,
+.upload-toolbar select,.attraction-form input,.attraction-form select,.hotel-form input,.hotel-form textarea,
+.expense-form input,.expense-form select,.expense-form textarea{
+  border-color:var(--control-border);
+  background:var(--control-bg);
+}
+.modal label,.vault-field{min-width:0}
+.modal h3{margin-top:0}
+.modal-backdrop,.vault-modal-backdrop{overscroll-behavior:contain}
+
+/* Document area consistency */
+.traveler-tabs button{min-width:0;text-align:left}
+.traveler-tabs button b,.traveler-tabs button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vault-banner,.document-cloud-status,.document-cloud-error{box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.vault-lock{background:linear-gradient(180deg,rgba(131,243,199,.055),rgba(131,243,199,.025))}
+.delete-doc-modal,.vault-modal{max-height:min(90dvh,760px);overflow:auto}
+
+/* Itinerary readability */
+.itinerary-day>header{gap:14px}
+.rich-itinerary-card{border:1px solid rgba(255,255,255,.055)}
+.itinerary-card-top{gap:10px}
+.commute-strip>div{min-height:58px}
+.activity-cost{min-height:42px}
+
+/* Mobile polish */
+@media(max-width:900px){
+  .section-heading{gap:12px}
+  .panel-title{gap:12px}
+  .country-card{min-height:220px}
+}
+@media(max-width:640px){
+  main{padding-bottom:max(8px,env(safe-area-inset-bottom))}
+  .topbar{min-height:62px}
+  .tabs{scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  .tabs button{scroll-snap-align:start;min-height:42px}
+  .content{padding-bottom:8px}
+  .section-heading{align-items:flex-start;gap:10px}
+  .section-heading>.secondary,.section-heading>.primary{flex:none}
+  .panel-title{align-items:center}
+  .panel-title h3{font-size:23px}
+  .mini-checks label{font-size:12px;min-height:40px;padding:8px}
+  .booking{gap:11px}
+  .booking-icon{width:40px;height:40px}
+  .booking-right{padding-top:0}
+  .country-switch{overflow:hidden}
+  .country-switch button{min-width:0}
+  .upload-toolbar{display:grid;grid-template-columns:1fr;gap:10px}
+  .upload-toolbar>*{width:100%;min-width:0}
+  .doc-card{grid-template-columns:36px minmax(0,1fr);gap:11px;padding:14px}
+  .doc-actions{grid-column:2;justify-content:flex-start;margin-top:4px}
+  .traveler-tabs{gap:8px}
+  .traveler-tabs button{padding:12px}
+  .itinerary-day>header{align-items:flex-start;flex-direction:column;gap:6px}
+  .itinerary-day>header>b{align-self:flex-start}
+  .modal-backdrop,.vault-modal-backdrop{padding:12px;align-items:end}
+  .modal,.vault-modal,.delete-doc-modal{width:100%;border-radius:22px 22px 16px 16px;max-height:88dvh}
+  footer{padding:50px 4px 28px;line-height:1.45}
+}
+@media(max-width:420px){
+  .quick-stats{grid-template-columns:1fr 1fr}
+  .stat{padding:12px;min-height:70px}
+  .stat b{font-size:18px}
+  .stat span{font-size:10px}
+  .tabs button{padding-inline:12px}
+}

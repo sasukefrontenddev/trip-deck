@@ -329,3 +329,6 @@ Private encrypted document payloads are synchronized in chunks instead of one la
 
 ## Mobile document sync reliability
 Private document uploads now drain independently of failed/stale sync mutations, encrypted file chunks use bounded concurrency with retries, and a newly unlocked mobile vault retries cloud hydration automatically. This fixes the case where documents remained visible on the desktop IndexedDB cache but never reached a second device.
+
+## Private document Redis flow (V22)
+Private documents are not included in the normal TripDeck cloud hydration. Each upload is encrypted in the browser and written to Redis in chunks; the upload UI only treats it as synced after Redis metadata and all chunks complete. After a traveler vault password is verified, TripDeck calls a traveler-scoped document endpoint and reconstructs only that traveler's encrypted files. Locking the folder removes that traveler's documents from the in-memory UI session. Document deletion uses a TripDeck-styled confirmation and deletes the Redis metadata/chunks before removing the local cache.
