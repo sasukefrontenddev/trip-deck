@@ -249,8 +249,14 @@ async function flushQueue(priorityStore?: TripStoreName) {
         attempted.add(mutation.id);
         try {
           if (mutation.operation === 'put') {
-            if (mutation.store === 'documents') await syncDocumentToCloud(mutation.value);
-            else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
+            if (mutation.store === 'documents') {
+              if (!mutation.value || typeof mutation.value !== 'object') {
+                throw new Error('Invalid queued document payload.');
+              }
+              await syncDocumentToCloud(mutation.value as TripDocument);
+            } else {
+              await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
+            }
           } else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
           await db.delete('syncQueue', mutation.id);
         } catch {
