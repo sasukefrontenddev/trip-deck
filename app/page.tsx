@@ -135,6 +135,8 @@ export default function Home() {
   const [itineraryImporting, setItineraryImporting] = useState(false);
   const [itineraryImportStatus, setItineraryImportStatus] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const [vaultDialog, setVaultDialog] = useState<{ target: TravelerName; mode: 'create' | 'unlock'; password: string; confirm: string; error: string; busy: boolean } | null>(null);
+  const vaultDialogResolver = useRef<((key: CryptoKey | null) => void) | null>(null);
 
   async function refresh() {
     const [b, d, i, c, e, h, a, v] = await Promise.all([
@@ -178,49 +180,33 @@ export default function Home() {
     const syncLiveFlightStatuses = async () => {
       const current = await getAll('bookings');
       const currentTime = Date.now();
+      const candidates = current.filter(b => {
+        if (b.type !== 'flight' || !b.flightNumber) return false;
+        const departureMs = +new Date(b.date);
+        if (departureMs < currentTime - 12 * 60 * 60 * 1000 || departureMs > currentTime + 36 * 60 * 60 * 1000) return false;
+        const lastChecked = b.providerLastChecked ? +new Date(b.providerLastChecked) : 0;
+        return !lastChecked || currentTime - lastChecked > 4 * 60 * 1000;
+      });
       let changed = false;
-      for (const booking of current.filter(b => b.type === 'flight' && b.flightNumber)) {
-        const departureMs = +new Date(booking.date);
-        // Poll live status only near departure to avoid wasting API quota. The initial
-        // add-flight lookup still stores the provider's current schedule/status.
-        if (departureMs < currentTime - 12 * 60 * 60 * 1000 || departureMs > currentTime + 36 * 60 * 60 * 1000) continue;
+      await Promise.allSettled(candidates.map(async (booking) => {
         try {
           const travelDate = booking.travelDate || booking.date.slice(0, 10);
-          const response = await fetch(`/api/flights/lookup?flightNumber=${encodeURIComponent(booking.flightNumber || '')}&date=${travelDate}`, { cache: 'no-store' });
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), 5500);
+          const response = await fetch(`/api/flights/lookup?flightNumber=${encodeURIComponent(booking.flightNumber || '')}&date=${travelDate}`, { cache: 'no-store', signal: controller.signal });
+          window.clearTimeout(timeout);
           const json = await response.json();
-          if (!response.ok || !json.flight) continue;
+          if (!response.ok || !json.flight) return;
           const f = json.flight as any;
           const revisedDeparture = normalizeWallClock(f?.departure?.actualTime?.local || f?.departure?.revisedTime?.local || f?.departure?.scheduledTime?.local || booking.date);
           const revisedArrival = normalizeWallClock(f?.arrival?.actualTime?.local || f?.arrival?.revisedTime?.local || f?.arrival?.scheduledTime?.local || booking.arrivalTime || '');
-          const updated: Booking = {
-            ...booking,
-            date: revisedDeparture || booking.date,
-            arrivalTime: revisedArrival || booking.arrivalTime,
-            airline: f?.airline?.name || booking.airline,
-            departureAirport: f?.departure?.airport?.name || booking.departureAirport,
-            departureAirportCode: f?.departure?.airport?.iata || booking.departureAirportCode,
-            arrivalAirport: f?.arrival?.airport?.name || booking.arrivalAirport,
-            arrivalAirportCode: f?.arrival?.airport?.iata || booking.arrivalAirportCode,
-            terminal: f?.departure?.terminal || booking.terminal,
-            gate: f?.departure?.gate || booking.gate,
-            arrivalTerminal: f?.arrival?.terminal || booking.arrivalTerminal,
-            arrivalGate: f?.arrival?.gate || booking.arrivalGate,
-            checkInDesk: f?.departure?.checkInDesk || booking.checkInDesk,
-            aircraft: aircraftModelFromApi(f?.aircraft) || booking.aircraft,
-            aircraftRegistration: f?.aircraft?.registration || booking.aircraftRegistration,
-            aircraftModeS: f?.aircraft?.modeS || f?.aircraft?.hexIcao || booking.aircraftModeS,
-            providerStatus: f?.status || booking.providerStatus,
-            status: f?.displayStatus || booking.status || 'EXPECTED',
-            revisedDepartureTime: normalizeWallClock(f?.departure?.revisedTime?.local || f?.departure?.actualTime?.local || '') || booking.revisedDepartureTime,
-            revisedArrivalTime: normalizeWallClock(f?.arrival?.revisedTime?.local || f?.arrival?.actualTime?.local || '') || booking.revisedArrivalTime,
-            providerLastChecked: json.checkedAt || new Date().toISOString(),
-          };
+          const updated: Booking = { ...booking, date: revisedDeparture || booking.date, arrivalTime: revisedArrival || booking.arrivalTime, airline: f?.airline?.name || booking.airline, departureAirport: f?.departure?.airport?.name || booking.departureAirport, departureAirportCode: f?.departure?.airport?.iata || booking.departureAirportCode, arrivalAirport: f?.arrival?.airport?.name || booking.arrivalAirport, arrivalAirportCode: f?.arrival?.airport?.iata || booking.arrivalAirportCode, terminal: f?.departure?.terminal || booking.terminal, gate: f?.departure?.gate || booking.gate, arrivalTerminal: f?.arrival?.terminal || booking.arrivalTerminal, arrivalGate: f?.arrival?.gate || booking.arrivalGate, checkInDesk: f?.departure?.checkInDesk || booking.checkInDesk, aircraft: aircraftModelFromApi(f?.aircraft) || booking.aircraft, aircraftRegistration: f?.aircraft?.registration || booking.aircraftRegistration, aircraftModeS: f?.aircraft?.modeS || f?.aircraft?.hexIcao || booking.aircraftModeS, providerStatus: f?.status || booking.providerStatus, status: f?.displayStatus || booking.status || 'EXPECTED', revisedDepartureTime: normalizeWallClock(f?.departure?.revisedTime?.local || f?.departure?.actualTime?.local || '') || booking.revisedDepartureTime, revisedArrivalTime: normalizeWallClock(f?.arrival?.revisedTime?.local || f?.arrival?.actualTime?.local || '') || booking.revisedArrivalTime, providerLastChecked: json.checkedAt || new Date().toISOString() };
           if (JSON.stringify(updated) !== JSON.stringify(booking)) { await put('bookings', updated); changed = true; }
-        } catch { /* keep the last known/offline flight status */ }
-      }
+        } catch { /* cached details remain visible instantly */ }
+      }));
       if (changed && !cancelled) await refresh();
     };
-    const initial = window.setTimeout(syncLiveFlightStatuses, 1500);
+    const initial = window.setTimeout(syncLiveFlightStatuses, 250);
     const timer = window.setInterval(syncLiveFlightStatuses, 5 * 60 * 1000);
     const onVisible = () => { if (document.visibilityState === 'visible') syncLiveFlightStatuses(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -254,30 +240,44 @@ export default function Home() {
     const cached = vaultKeys.current[target];
     if (cached) return cached;
     const existing = vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
-    if (!existing) {
-      const password = window.prompt(`Create a private document password for ${target}. Use at least 8 characters.`);
-      if (!password) return null;
-      const confirm = window.prompt(`Confirm ${target}'s document password.`);
-      if (password !== confirm) { alert('Passwords did not match.'); return null; }
-      try {
-        const { vault, key } = await createVault(target, password);
-        await put('vaults', vault);
-        vaultKeys.current[target] = key;
-        setUnlockedTravelers(current => Array.from(new Set([...current, target])));
-        // Encrypt any documents that were saved by an older TripDeck build.
+    return await new Promise<CryptoKey | null>((resolve) => {
+      if (vaultDialogResolver.current) vaultDialogResolver.current(null);
+      vaultDialogResolver.current = resolve;
+      setVaultDialog({ target, mode: existing ? 'unlock' : 'create', password: '', confirm: '', error: '', busy: false });
+    });
+  }
+
+  async function submitVaultDialog() {
+    if (!vaultDialog || vaultDialog.busy) return;
+    const { target, mode, password, confirm } = vaultDialog;
+    if (password.length < 8) return setVaultDialog(current => current ? { ...current, error: 'Use at least 8 characters.' } : current);
+    if (mode === 'create' && password !== confirm) return setVaultDialog(current => current ? { ...current, error: 'Passwords do not match.' } : current);
+    setVaultDialog(current => current ? { ...current, busy: true, error: '' } : current);
+    try {
+      let key: CryptoKey | null = null;
+      if (mode === 'create') {
+        const created = await createVault(target, password);
+        await put('vaults', created.vault);
+        key = created.key;
         const legacyDocs = (await getAll('documents')).filter(d => d.traveler === target && !d.encrypted);
         for (const doc of legacyDocs) await put('documents', await encryptDocumentBlob(doc, doc.blob, key));
         await refresh();
-        return key;
-      } catch (error) { alert(error instanceof Error ? error.message : 'Could not create the private vault.'); return null; }
+      } else {
+        const existing = vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
+        if (!existing) throw new Error('This private vault could not be found. Refresh the page and try again.');
+        key = await unlockVault(existing, password);
+        if (!key) throw new Error('Incorrect password.');
+      }
+      vaultKeys.current[target] = key;
+      setUnlockedTravelers(current => Array.from(new Set([...current, target])));
+      const resolver = vaultDialogResolver.current; vaultDialogResolver.current = null; setVaultDialog(null); resolver?.(key);
+    } catch (error) {
+      setVaultDialog(current => current ? { ...current, busy: false, error: error instanceof Error ? error.message : 'Could not unlock this folder.' } : current);
     }
-    const password = window.prompt(`Enter ${target}'s document password.`);
-    if (!password) return null;
-    const key = await unlockVault(existing, password);
-    if (!key) { alert('Incorrect password.'); return null; }
-    vaultKeys.current[target] = key;
-    setUnlockedTravelers(current => Array.from(new Set([...current, target])));
-    return key;
+  }
+
+  function closeVaultDialog() {
+    const resolver = vaultDialogResolver.current; vaultDialogResolver.current = null; setVaultDialog(null); resolver?.(null);
   }
 
   function lockTraveler(target: TravelerName = traveler) {
@@ -560,6 +560,14 @@ export default function Home() {
       {tab === 'toolkit' && <motion.section className="content" key="toolkit" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">TRAVEL SMARTER</span><h3>Group toolkit</h3></div><button className="secondary small" onClick={exportTrip}><ArrowDownTrayIcon/> Backup data</button></div><div className="tool-grid"><section className="panel glass"><div className="panel-title"><h3>Checklist</h3><ClipboardDocumentCheckIcon/></div><div className="checklist">{checklist.map(item => <label key={item.id} className={item.done ? 'done' : ''}><input type="checkbox" checked={item.done} onChange={async () => { await put('checklist', { ...item, done: !item.done }); await refresh(); }}/><div><b>{item.title}</b><span>{item.category}</span></div></label>)}</div></section><section className="panel glass emergency"><div className="panel-title"><h3>Emergency card</h3><PhoneIcon/></div><div className="emergency-list"><div><b>Malaysia</b><span>Emergency: 999</span></div><div><b>Singapore</b><span>Police: 999 · Fire/Ambulance: 995</span></div><div><b>Indonesia</b><span>Emergency: 112</span></div></div></section></div></motion.section>}
     </AnimatePresence>
 
+    <AnimatePresence>{vaultDialog && <motion.div className="vault-modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={closeVaultDialog}><motion.div className="vault-modal" initial={{opacity:0,y:18,scale:.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:10,scale:.98}} onMouseDown={e=>e.stopPropagation()}>
+      <div className="vault-modal-icon"><ShieldCheckIcon/></div><div className="vault-modal-copy"><span className="eyebrow">PRIVATE DOCUMENT VAULT</span><h3>{vaultDialog.mode === 'create' ? `Protect ${vaultDialog.target}'s folder` : `Unlock ${vaultDialog.target}'s folder`}</h3><p>{vaultDialog.mode === 'create' ? 'Create a private password. Files are encrypted on this device before they are stored or synced.' : 'Enter this traveler’s password to view, open or upload private documents.'}</p></div>
+      <label className="vault-field"><span>Password</span><input autoFocus type="password" value={vaultDialog.password} onChange={e=>setVaultDialog(v=>v?{...v,password:e.target.value,error:''}:v)} onKeyDown={e=>{if(e.key==='Enter'&&vaultDialog.mode==='unlock') submitVaultDialog();}} placeholder="At least 8 characters"/></label>
+      {vaultDialog.mode === 'create' && <label className="vault-field"><span>Confirm password</span><input type="password" value={vaultDialog.confirm} onChange={e=>setVaultDialog(v=>v?{...v,confirm:e.target.value,error:''}:v)} onKeyDown={e=>{if(e.key==='Enter') submitVaultDialog();}} placeholder="Repeat the password"/></label>}
+      {vaultDialog.error && <div className="vault-error">{vaultDialog.error}</div>}
+      <div className="vault-modal-actions"><button className="secondary" type="button" onClick={closeVaultDialog} disabled={vaultDialog.busy}>Cancel</button><button className="primary" type="button" onClick={submitVaultDialog} disabled={vaultDialog.busy}><ShieldCheckIcon/>{vaultDialog.busy ? 'Securing…' : vaultDialog.mode === 'create' ? 'Create private vault' : 'Unlock folder'}</button></div>
+      <small className="vault-privacy-note">TripDeck never stores the password itself. Keep it somewhere safe.</small>
+    </motion.div></motion.div>}</AnimatePresence>
     <footer><CheckCircleIcon/> Offline-first group travel planner. Local files remain on this device.</footer>
     <AnimatePresence>{showAdd && <AddModal onClose={() => setShowAdd(false)} onSaved={async () => { await refresh(); setShowAdd(false); }}/>}</AnimatePresence>
   </main>;
@@ -636,10 +644,16 @@ function FlightForm({ online, onSaved }: { online: boolean; onSaved: () => void 
   async function fetchFlight(form: HTMLFormElement) {
     const data = new FormData(form); const flightNumber = String(data.get('flightNumber') || '').trim(); const date = String(data.get('travelDate') || '');
     if (!flightNumber || !date) return setMessage('Enter a flight number and travel date first.');
-    setLoading(true); setMessage('');
-    try { const response = await fetch(`/api/flights/lookup?flightNumber=${encodeURIComponent(flightNumber)}&date=${date}`); const json = await response.json(); if (!response.ok) throw new Error(json.error || 'Lookup failed'); setLookup(json.flight); setMessage('Flight schedule found. Review it, then save.'); }
-    catch (error) { setLookup(null); setMessage(error instanceof Error ? error.message : 'Could not fetch flight. You can still save it manually.'); }
-    finally { setLoading(false); }
+    setLoading(true); setMessage('Checking saved flight details…');
+    const cached = (await getAll('bookings')).find(b => b.type === 'flight' && String(b.flightNumber || '').replace(/\s+/g,'').toUpperCase() === flightNumber.replace(/\s+/g,'').toUpperCase() && (b.travelDate || b.date.slice(0,10)) === date);
+    if (cached) {
+      setLookup({ airline:{name:cached.airline}, departure:{airport:{name:cached.departureAirport,iata:cached.departureAirportCode},scheduledTime:{local:cached.date},revisedTime:{local:cached.revisedDepartureTime},terminal:cached.terminal,gate:cached.gate,checkInDesk:cached.checkInDesk}, arrival:{airport:{name:cached.arrivalAirport,iata:cached.arrivalAirportCode},scheduledTime:{local:cached.arrivalTime},revisedTime:{local:cached.revisedArrivalTime},terminal:cached.arrivalTerminal,gate:cached.arrivalGate}, aircraft:{model:cached.aircraft,registration:cached.aircraftRegistration,modeS:cached.aircraftModeS}, status:cached.providerStatus, displayStatus:cached.status });
+      setMessage('Saved details loaded instantly. Refreshing live data…');
+    } else setMessage('Fetching live schedule…');
+    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 5500);
+    try { const response = await fetch(`/api/flights/lookup?flightNumber=${encodeURIComponent(flightNumber)}&date=${date}`, { signal: controller.signal, cache:'no-store' }); const json = await response.json(); if (!response.ok) throw new Error(json.error || 'Lookup failed'); setLookup(json.flight); setMessage('Live schedule loaded. Review it, then save.'); }
+    catch (error) { if (!cached) setLookup(null); setMessage(cached ? 'Saved details are ready. Live refresh timed out, so TripDeck kept the cached information.' : (error instanceof Error && error.name === 'AbortError' ? 'Live lookup timed out. You can save manually and TripDeck will refresh it in the background.' : error instanceof Error ? error.message : 'Could not fetch flight. You can still save it manually.')); }
+    finally { window.clearTimeout(timeout); setLoading(false); }
   }
   async function submit(formData: FormData) {
     const f = lookup as any;

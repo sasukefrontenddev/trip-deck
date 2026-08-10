@@ -53,14 +53,16 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com' },
       cache: 'no-store',
+      signal: AbortSignal.timeout(4500),
     });
     const payload = await response.json();
     if (!response.ok) return NextResponse.json({ error: payload?.message || 'The flight provider could not find that flight.' }, { status: response.status });
     const options: AeroFlight[] = Array.isArray(payload) ? payload : payload?.flights || [];
     const flight = options[0];
     if (!flight) return NextResponse.json({ error: 'No matching scheduled flight was found. Check the flight number and local departure date.' }, { status: 404 });
-    return NextResponse.json({ flight: { ...flight, displayStatus: displayStatus(flight.status) }, provider: 'AeroDataBox', checkedAt: new Date().toISOString() });
-  } catch {
-    return NextResponse.json({ error: 'The flight lookup provider is temporarily unavailable.' }, { status: 502 });
+    return NextResponse.json({ flight: { ...flight, displayStatus: displayStatus(flight.status) }, provider: 'AeroDataBox', checkedAt: new Date().toISOString() }, { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=120' } });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    return NextResponse.json({ error: timedOut ? 'Live flight data is taking too long. Saved details remain available; try refreshing in a moment.' : 'The flight lookup provider is temporarily unavailable.' }, { status: timedOut ? 504 : 502 });
   }
 }

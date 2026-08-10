@@ -14,3 +14,9 @@ TripDeck Food V5
 - Browser-side route requests abort after 7 seconds; server geocoder/router calls also use bounded timeouts.
 - Added AUH / Zayed International Airport to the known-airport map.
 - Improved generic destination-geocoding error text for itinerary places.
+
+## V19 — Faster flight data + vault UI
+- Flight cards continue rendering from IndexedDB immediately; live flight refresh is background-only.
+- Near-departure status requests are parallelized, deduplicated for 4 minutes, and client/server timed out so a slow provider cannot hold the UI.
+- Flight lookup is cache-first: matching saved details appear immediately while AeroDataBox refreshes in the background.
+- Replaced native browser password prompts with a TripDeck-styled create/unlock modal, inline validation, loading state, and matching lock/unlock controls.
