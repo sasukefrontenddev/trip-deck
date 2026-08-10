@@ -40,7 +40,7 @@ Apply them to Production/Preview/Development as desired, then redeploy.
 The code also accepts legacy Vercel KV names `KV_REST_API_URL` and `KV_REST_API_TOKEN` if you already have those configured.
 
 ## 4. Flight/calendar fix
-The custom calendar previously hard-limited selectable dates to **3 September 2026**. That `max` restriction has been removed, including from flight lookup, itinerary, expense and attraction date inputs. The original 21 August trip-start minimum remains where it already existed.
+The custom calendar previously hard-limited selectable dates to **4 September 2026**. That `max` restriction has been removed, including from flight lookup, itinerary, expense and attraction date inputs. The original 21 August trip-start minimum remains where it already existed.
 
 AeroDataBox can only return schedules that exist in the provider's data/plan. If a future flight is not published yet, manual flight entry continues to work exactly as before.
 

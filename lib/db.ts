@@ -21,8 +21,15 @@ export type Booking = {
   arrivalAirport?: string;
   arrivalAirportCode?: string;
   arrivalTime?: string;
+  revisedDepartureTime?: string;
+  revisedArrivalTime?: string;
   terminal?: string;
   gate?: string;
+  arrivalTerminal?: string;
+  arrivalGate?: string;
+  checkInDesk?: string;
+  aircraft?: string;
+  providerStatus?: string;
   status?: string;
   providerLastChecked?: string;
   reminderEnabled?: boolean;

@@ -125,7 +125,7 @@ Dubai ──▶ Malaysia ──▶ Singapore ──▶ Jakarta ──▶ Dubai
 | Arrive Malaysia | 22 August 2026 |
 | Travel to Singapore | 26 August 2026 |
 | Travel to Indonesia | 30 August 2026 |
-| Return to Dubai | 3 September 2026 |
+| Return to Abu Dhabi | 4 September 2026 |
 
 The country split can be edited in `app/page.tsx`.
 
@@ -307,3 +307,7 @@ Before deploying:
 `OFFLINE-FIRST` · `SMART PLANNING` · `LOCAL DATA` · `MULTI-COUNTRY`
 
 </div>
+
+## Live flight status behaviour
+
+Saved flights keep working offline. When the app is online, TripDeck refreshes flights that are within 36 hours of departure (and up to 12 hours after the scheduled departure) every five minutes and whenever the tab becomes active again. The latest AeroDataBox status, departure/arrival revisions, terminals, gates, check-in desk and aircraft details are persisted back to the local cache and configured Redis database. The home boarding pass automatically moves to the next future flight after the current flight departs/enters flight or lands.
