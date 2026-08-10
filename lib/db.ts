@@ -138,10 +138,49 @@ function fromCloudValue(store: TripStoreName, value: any) {
   if (store !== 'documents' || !value?.blobDataUrl) return value;
   const { blobDataUrl, ...rest } = value; return { ...rest, blob: dataUrlToBlob(blobDataUrl) };
 }
+
+const DOCUMENT_CHUNK_SIZE = 300_000;
+async function syncDocumentToCloud(value: any) {
+  if (!(value?.blob instanceof Blob)) {
+    await cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}`, { method: 'PUT', body: JSON.stringify({ value }) });
+    return;
+  }
+  const cloudValue = await toCloudValue('documents', value) as any;
+  const dataUrl = String(cloudValue.blobDataUrl || '');
+  const chunks: string[] = [];
+  for (let offset = 0; offset < dataUrl.length; offset += DOCUMENT_CHUNK_SIZE) chunks.push(dataUrl.slice(offset, offset + DOCUMENT_CHUNK_SIZE));
+  // Upload encrypted payload chunks first. The metadata pointer is committed last so
+  // another device never sees a document whose payload is only partially uploaded.
+  await Promise.all(chunks.map((chunk, index) =>
+    cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}/chunks/${index}`, { method: 'PUT', body: JSON.stringify({ chunk }) })
+  ));
+  const { blobDataUrl: _blobDataUrl, ...metadata } = cloudValue;
+  await cloudRequest(`/api/data/documents/${encodeURIComponent(value.id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value: { ...metadata, blobChunkCount: chunks.length, blobEncoding: 'data-url-chunks-v1' } }),
+  });
+}
+
+async function downloadDocumentFromCloud(raw: any): Promise<any | null> {
+  if (raw?.blobDataUrl) return fromCloudValue('documents', raw);
+  const count = Number(raw?.blobChunkCount || 0);
+  if (!count) return null;
+  try {
+    const pieces = await Promise.all(Array.from({ length: count }, async (_, index) => {
+      const result = await cloudRequest(`/api/data/documents/${encodeURIComponent(raw.id)}/chunks/${index}`) as { chunk?: string };
+      if (typeof result?.chunk !== 'string') throw new Error('missing document chunk');
+      return result.chunk;
+    }));
+    return fromCloudValue('documents', { ...raw, blobDataUrl: pieces.join('') });
+  } catch {
+    return null;
+  }
+}
 async function cloudRequest(path: string, init?: RequestInit) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('offline');
   const controller = new AbortController();
-  const timer = typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), 4500) : undefined;
+  const timeoutMs = path.startsWith('/api/data/documents') ? 12_000 : 4_500;
+  const timer = typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
     const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, cache: 'no-store', signal: init?.signal || controller.signal });
     if (!response.ok) throw new Error(`Cloud sync failed (${response.status})`);
@@ -163,8 +202,10 @@ async function flushQueue() {
     const queued = await db.getAll('syncQueue');
     for (const mutation of queued.sort((a,b) => a.createdAt.localeCompare(b.createdAt))) {
       try {
-        if (mutation.operation === 'put') await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
-        else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
+        if (mutation.operation === 'put') {
+          if (mutation.store === 'documents') await syncDocumentToCloud(mutation.value);
+          else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'PUT', body: JSON.stringify({ value: await toCloudValue(mutation.store, mutation.value) }) });
+        } else await cloudRequest(`/api/data/${mutation.store}/${encodeURIComponent(mutation.key)}`, { method: 'DELETE' });
         await db.delete('syncQueue', mutation.id);
       } catch { break; }
     }
@@ -192,17 +233,29 @@ export async function syncStoreFromCloud<T extends TripStoreName>(store: T): Pro
     const local = await db.getAll(store as any) as any[];
     if (!remote.values.length && local.length) {
       // First-run migration is background-only.
-      await Promise.allSettled(local.map(async value =>
-        cloudRequest(`/api/data/${store}/${encodeURIComponent(value.id)}`, {
+      await Promise.allSettled(local.map(async value => {
+        if (store === 'documents') return syncDocumentToCloud(value);
+        return cloudRequest(`/api/data/${store}/${encodeURIComponent(value.id)}`, {
           method: 'PUT', body: JSON.stringify({ value: await toCloudValue(store, value) })
-        })
-      ));
+        });
+      }));
       return false;
     }
 
     let changed = false;
+    const remoteIds = new Set(remote.values.map((raw: any) => raw?.id).filter(Boolean));
+
+    // Document vaults were added after the original local-only app. A document may therefore
+    // exist only on an older desktop even though the sync queue no longer contains its upload.
+    // Repair that situation by backfilling any local document missing from cloud.
+    if (store === 'documents') {
+      const missingRemote = local.filter(value => !remoteIds.has(value.id));
+      if (missingRemote.length) await Promise.allSettled(missingRemote.map(value => syncDocumentToCloud(value)));
+    }
+
     for (const raw of remote.values) {
-      const value = fromCloudValue(store, raw);
+      const value = store === 'documents' ? await downloadDocumentFromCloud(raw) : fromCloudValue(store, raw);
+      if (!value) continue; // Keep any working local copy if a remote payload is incomplete.
       const before = await db.get(store as any, value.id) as any;
       if (!before || JSON.stringify(before) !== JSON.stringify(value)) {
         await db.put(store as any, value);

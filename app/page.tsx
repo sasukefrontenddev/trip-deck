@@ -18,7 +18,7 @@ import LiveMoneyAndShops from '@/components/LiveMoneyAndShops';
 import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
-  ItineraryItem, put, remove, syncAllFromCloud, TRAVELERS, TravelerName, TripDocument, DocumentVault
+  ItineraryItem, put, remove, syncAllFromCloud, syncStoreFromCloud, TRAVELERS, TravelerName, TripDocument, DocumentVault
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
 import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
@@ -137,6 +137,7 @@ export default function Home() {
   const [now, setNow] = useState(() => Date.now());
   const [vaultDialog, setVaultDialog] = useState<{ target: TravelerName; mode: 'create' | 'unlock'; password: string; confirm: string; error: string; busy: boolean } | null>(null);
   const vaultDialogResolver = useRef<((key: CryptoKey | null) => void) | null>(null);
+  const documentCloudRefreshAt = useRef(0);
 
   async function refresh() {
     const [b, d, i, c, e, h, a, v] = await Promise.all([
@@ -185,6 +186,14 @@ export default function Home() {
     window.addEventListener('online', sync); window.addEventListener('offline', sync); window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.clearInterval(countdownTimer); window.removeEventListener('online', sync); window.removeEventListener('offline', sync); window.removeEventListener('scroll', onScroll); };
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'documents' || !online) return;
+    const nowMs = Date.now();
+    if (nowMs - documentCloudRefreshAt.current < 10_000) return;
+    documentCloudRefreshAt.current = nowMs;
+    void Promise.allSettled([syncStoreFromCloud('vaults'), syncStoreFromCloud('documents')]).then(() => refresh());
+  }, [tab, online]);
 
   useEffect(() => {
     if (!online) return;
@@ -283,6 +292,12 @@ export default function Home() {
       vaultKeys.current[target] = key;
       setUnlockedTravelers(current => Array.from(new Set([...current, target])));
       const resolver = vaultDialogResolver.current; vaultDialogResolver.current = null; setVaultDialog(null); resolver?.(key);
+
+      // A phone/new browser may have the vault verifier already but not the encrypted file blobs yet.
+      // Pull documents again immediately after a successful unlock, then refresh the folder when they land.
+      if (navigator.onLine) {
+        void syncStoreFromCloud('documents').then(() => refresh());
+      }
     } catch (error) {
       setVaultDialog(current => current ? { ...current, busy: false, error: error instanceof Error ? error.message : 'Could not unlock this folder.' } : current);
     }

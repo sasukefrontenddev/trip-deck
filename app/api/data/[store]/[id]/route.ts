@@ -15,6 +15,10 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
   const { store, id } = await paramsOf(context);
   if (!STORES.has(store)) return NextResponse.json({ error: 'Invalid store.' }, { status: 400 });
   if (!redisConfigured) return NextResponse.json({ error: 'Database is not configured.' }, { status: 503 });
-  try { await redisCommand(['HDEL', `tripdeck:v1:${store}`, id]); return new NextResponse(null, { status: 204 }); }
+  try {
+    await redisCommand(['HDEL', `tripdeck:v1:${store}`, id]);
+    if (store === 'documents') await redisCommand(['DEL', `tripdeck:v1:documentChunks:${id}`]);
+    return new NextResponse(null, { status: 204 });
+  }
   catch { return NextResponse.json({ error: 'Database delete failed.' }, { status: 503 }); }
 }

@@ -322,3 +322,6 @@ TripDeck detects the saved flight arriving in Singapore (SIN / Singapore destina
 
 ## Private traveler document vaults
 Each traveler document folder can now be protected with its own password. TripDeck derives an AES-256-GCM key in the browser using PBKDF2-SHA-256 (250,000 iterations). The password itself is never stored or sent to Redis. Document file bytes are encrypted before IndexedDB/cloud synchronization; opening a document requires that traveler's password. Older unencrypted documents are encrypted automatically when a vault is first created. Use a strong, unique password and keep it safe: TripDeck intentionally cannot recover a forgotten vault password.
+
+## V21 — Cross-device private document sync
+Private encrypted document payloads are synchronized in chunks instead of one large Redis value. This makes vault documents reliable across desktop and mobile browsers. Opening Documents while online refreshes vault/document metadata, and unlocking a traveler vault triggers an immediate document pull. Existing legacy single-value cloud documents are migrated to chunked storage automatically, while documents that only exist in an older desktop IndexedDB are backfilled to Redis from that device.
