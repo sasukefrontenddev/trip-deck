@@ -18,9 +18,13 @@ export async function loadPdfJs(): Promise<PdfJs> {
     script.onload = () => resolve(); script.onerror = () => reject(new Error('PDF parser could not load. Connect to the internet once and try again.'));
     document.head.appendChild(script);
   });
-  if (!window.pdfjsLib) throw new Error('PDF parser did not initialize.');
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-  return window.pdfjsLib;
+  // Re-read the global after the asynchronous script load. TypeScript keeps the
+  // earlier `window.pdfjsLib` false-narrowing across the await otherwise, which
+  // makes the property appear as `never` during production type-checking.
+  const pdfjs = (window as Window & { pdfjsLib?: PdfJs }).pdfjsLib;
+  if (!pdfjs) throw new Error('PDF parser did not initialize.');
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  return pdfjs;
 }
 
 export async function extractPdfLines(file: File): Promise<string[]> {
