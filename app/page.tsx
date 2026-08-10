@@ -19,7 +19,7 @@ import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
   ItineraryItem, put, remove, syncAllFromCloud, syncStoreFromCloud, TRAVELERS, TravelerName, TripDocument, DocumentVault,
-  fetchTravelerDocumentsFromCloud, putDocumentCloudFirst, removeDocumentCloudFirst
+  fetchTravelerDocumentsFromCloud, fetchDocumentContentFromCloud, putDocumentCloudFirst, removeDocumentCloudFirst
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
 import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
@@ -143,6 +143,7 @@ export default function Home() {
   const [documentSyncError, setDocumentSyncError] = useState('');
   const [deleteDocumentDialog, setDeleteDocumentDialog] = useState<TripDocument | null>(null);
   const [deletingDocument, setDeletingDocument] = useState(false);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
 
   async function refresh() {
     // Private documents are deliberately excluded from normal app hydration. They are fetched
@@ -310,7 +311,7 @@ export default function Home() {
         await put('vaults', created.vault);
         key = created.key;
         const legacyDocs = (await getAll('documents')).filter(d => d.traveler === target && !d.encrypted);
-        for (const doc of legacyDocs) await putDocumentCloudFirst(await encryptDocumentBlob(doc, doc.blob, key));
+        for (const doc of legacyDocs) if (doc.blob instanceof Blob) await putDocumentCloudFirst(await encryptDocumentBlob(doc, doc.blob, key));
         await refresh();
       } else {
         const existing = vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
@@ -343,13 +344,22 @@ export default function Home() {
 
   async function openPrivateDocument(doc: TripDocument) {
     const key = await ensureTravelerVault(doc.traveler);
-    if (!key) return;
+    if (!key || openingDocumentId === doc.id) return;
+    setOpeningDocumentId(doc.id);
+    setDocumentSyncError('');
     try {
-      const blob = await decryptDocumentBlob(doc, key);
+      // The list is metadata-only. Fetch the encrypted payload only for the file the user opens.
+      const ready = await fetchDocumentContentFromCloud(doc);
+      setDocuments(current => current.map(item => item.id === ready.id ? ready : item));
+      const blob = await decryptDocumentBlob(ready, key);
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch { alert('This document could not be decrypted. Check that you used the correct traveler password.'); }
+    } catch (error) {
+      setDocumentSyncError(error instanceof Error ? error.message : 'This document could not be opened.');
+    } finally {
+      setOpeningDocumentId(current => current === doc.id ? null : current);
+    }
   }
 
   const countryExpenses = expenses.filter(e => e.country === expenseCountry);
@@ -622,9 +632,9 @@ export default function Home() {
       {tab === 'documents' && <motion.section className="content" key="documents" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">6 PRIVATE FOLDERS</span><h3>Traveler documents</h3></div></div>
         <div className="traveler-tabs">{TRAVELERS.map(name => <button key={name} className={traveler === name ? 'active' : ''} onClick={() => setTraveler(name)}><FolderIcon/><span>{name}</span><b>{unlockedTravelers.includes(name) ? documents.filter(d => d.traveler === name).length : '🔒'}</b></button>)}</div>
         {!travelerUnlocked ? <div className="vault-lock glass"><ShieldCheckIcon/><div><b>{selectedVault ? `${traveler}'s private vault is locked` : `Protect ${traveler}'s documents`}</b><span>{selectedVault ? 'Enter this traveler’s password to view or open their documents.' : 'Create a password. Existing files will be encrypted automatically and future uploads will be encrypted before cloud sync.'}</span></div><button className="primary small" onClick={() => ensureTravelerVault(traveler)}>{selectedVault ? 'Unlock documents' : 'Create private vault'}</button></div> : <><div className="vault-banner"><ShieldCheckIcon/><div><b>{traveler}&apos;s encrypted folder</b><span>Unlocked for this browser session. File contents are AES-256-GCM encrypted before local/cloud storage.</span></div></div><div className="upload-toolbar"><select value={docCategory} onChange={e => setDocCategory(e.target.value as TripDocument['category'])}><option>Passport</option><option>Visa</option><option>Ticket</option><option>Insurance</option><option>Hotel</option><option>Itinerary</option><option>Other</option></select><label className="primary small"><ArrowUpTrayIcon/> Upload for {traveler}<input type="file" multiple hidden onChange={e => uploadFiles(e.target.files)}/></label><button className="secondary small" onClick={() => lockTraveler(traveler)}>Lock folder</button></div>
-        {documentSyncing === traveler && <div className="document-cloud-status"><span className="document-cloud-spinner"/><div><b>Syncing private documents</b><span>Securely reading/writing {traveler}&apos;s encrypted files in Redis…</span></div></div>}
+        {documentSyncing === traveler && <div className="document-cloud-status"><span className="document-cloud-spinner"/><div><b>Checking private documents</b><span>Refreshing {traveler}&apos;s secure document list…</span></div></div>}
         {documentSyncError && <div className="document-cloud-error">{documentSyncError}<button onClick={() => loadTravelerDocuments(traveler, true)}>Retry cloud fetch</button></div>}
-        {documentSyncing === traveler ? null : selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="No encrypted files were found in this traveler’s Redis vault. Upload a document here and TripDeck will confirm it reaches cloud storage before showing it as synced."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB · {doc.encrypted ? 'Encrypted' : 'Legacy file'}</span></div><div className="doc-actions"><button onClick={() => openPrivateDocument(doc)}>Open</button><button aria-label={`Delete ${doc.name}`} onClick={() => setDeleteDocumentDialog(doc)}><TrashIcon/></button></div></article>)}</div>}</>}
+        {selectedDocs.length === 0 && documentSyncing === traveler ? null : selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="No encrypted files were found in this traveler’s Redis vault. Upload a document here and TripDeck will confirm it reaches cloud storage before showing it as synced."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB · {doc.encrypted ? 'Encrypted' : 'Legacy file'}</span></div><div className="doc-actions"><button className="doc-open-button" disabled={openingDocumentId===doc.id} onClick={() => openPrivateDocument(doc)}>{openingDocumentId===doc.id ? 'Opening…' : 'Open file'}</button><button className="doc-delete-button" aria-label={`Delete ${doc.name}`} onClick={() => setDeleteDocumentDialog(doc)}><TrashIcon/></button></div></article>)}</div>}</>}
       </motion.section>}
 
       {tab === 'expenses' && <motion.section className="content" key="expenses" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><ExpenseCenter country={expenseCountry} setCountry={setExpenseCountry} expenses={expenses} onRefresh={refresh}/></motion.section>}

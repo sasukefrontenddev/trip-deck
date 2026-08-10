@@ -47,7 +47,9 @@ export type TripDocument = {
   type: string;
   size: number;
   createdAt: string;
-  blob: Blob;
+  blob?: Blob;
+  blobChunkCount?: number;
+  blobEncoding?: string;
   encrypted?: boolean;
   encryptionIv?: string;
   originalType?: string;
@@ -205,7 +207,7 @@ async function downloadDocumentFromCloud(raw: any): Promise<any | null> {
 async function cloudRequest(path: string, init?: RequestInit) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('offline');
   const controller = new AbortController();
-  const timeoutMs = path.startsWith('/api/data/documents') ? 20_000 : 4_500;
+  const timeoutMs = path.includes('/api/data/documents/traveler/') ? 6_000 : path.startsWith('/api/data/documents') ? 20_000 : 4_500;
   const timer = typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
     const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, cache: 'no-store', signal: init?.signal || controller.signal });
@@ -332,25 +334,45 @@ export async function syncAllFromCloud(stores: TripStoreName[] = ['bookings','it
 
 
 export async function fetchTravelerDocumentsFromCloud(traveler: TravelerName): Promise<TripDocument[]> {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    const db = await dbPromise!;
-    return (await db.getAll('documents')).filter(doc => doc.traveler === traveler);
-  }
   const db = await dbPromise!;
-  const response = await cloudRequest(`/api/data/documents/traveler/${encodeURIComponent(traveler)}`) as { values?: any[]; configured?: boolean };
-  if (!response?.configured || !Array.isArray(response.values)) return [];
-  const hydrated: TripDocument[] = [];
-  for (const raw of response.values) {
-    const value = await downloadDocumentFromCloud(raw);
-    if (!value || value.traveler !== traveler) continue;
-    await db.put('documents', value);
-    hydrated.push(value);
-  }
-  // Remove stale local copies for this traveler that no longer exist in Redis.
-  const remoteIds = new Set(hydrated.map(doc => doc.id));
   const locals = (await db.getAll('documents')).filter(doc => doc.traveler === traveler);
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return locals;
+
+  // Unlock should only fetch the lightweight Redis index/metadata. Downloading every encrypted
+  // PDF/image here made a folder with several files feel permanently stuck on mobile.
+  const response = await cloudRequest(`/api/data/documents/traveler/${encodeURIComponent(traveler)}`) as { values?: any[]; configured?: boolean };
+  if (!response?.configured || !Array.isArray(response.values)) return locals;
+
+  const localById = new Map(locals.map(doc => [doc.id, doc] as const));
+  const remoteIds = new Set<string>();
+  const indexed: TripDocument[] = [];
+  for (const raw of response.values) {
+    if (!raw || raw.traveler !== traveler || !raw.id) continue;
+    remoteIds.add(raw.id);
+    const local = localById.get(raw.id);
+    // Preserve a previously downloaded local encrypted blob for instant/offline opening, but do
+    // not download the payload just to paint the document list.
+    const value: TripDocument = {
+      ...raw,
+      blob: local?.blob,
+      blobChunkCount: Number(raw.blobChunkCount || 0) || undefined,
+      blobEncoding: raw.blobEncoding,
+    };
+    await db.put('documents', value);
+    indexed.push(value);
+  }
   await Promise.all(locals.filter(doc => !remoteIds.has(doc.id)).map(doc => db.delete('documents', doc.id)));
-  return hydrated.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  return indexed.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function fetchDocumentContentFromCloud(doc: TripDocument): Promise<TripDocument> {
+  if (doc.blob instanceof Blob && doc.blob.size > 0) return doc;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('This file is not cached on this device. Connect to the internet to open it.');
+  const hydrated = await downloadDocumentFromCloud(doc);
+  if (!hydrated?.blob) throw new Error('The encrypted file could not be downloaded from cloud storage.');
+  const db = await dbPromise!;
+  await db.put('documents', hydrated);
+  return hydrated as TripDocument;
 }
 
 export async function putDocumentCloudFirst(value: TripDocument): Promise<string> {

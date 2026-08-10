@@ -56,6 +56,7 @@ export async function encryptDocumentBlob(doc: TripDocument, source: Blob, key: 
 }
 
 export async function decryptDocumentBlob(doc: TripDocument, key: CryptoKey): Promise<Blob> {
+  if (!(doc.blob instanceof Blob)) throw new Error('Document content is not loaded on this device.');
   if (!doc.encrypted) return doc.blob;
   if (!doc.encryptionIv) throw new Error('Encrypted document is missing its IV.');
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(doc.encryptionIv) }, key, await doc.blob.arrayBuffer());

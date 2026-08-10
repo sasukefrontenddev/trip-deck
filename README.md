@@ -332,3 +332,6 @@ Private document uploads now drain independently of failed/stale sync mutations,
 
 ## Private document Redis flow (V22)
 Private documents are not included in the normal TripDeck cloud hydration. Each upload is encrypted in the browser and written to Redis in chunks; the upload UI only treats it as synced after Redis metadata and all chunks complete. After a traveler vault password is verified, TripDeck calls a traveler-scoped document endpoint and reconstructs only that traveler's encrypted files. Locking the folder removes that traveler's documents from the in-memory UI session. Document deletion uses a TripDeck-styled confirmation and deletes the Redis metadata/chunks before removing the local cache.
+
+## Document loading performance
+Traveler vault unlock now fetches only document metadata from Redis. Encrypted file chunks are downloaded lazily when the user opens an individual document, which keeps folder unlock fast on mobile and desktop. Cached encrypted blobs remain available offline when already downloaded on that device.
