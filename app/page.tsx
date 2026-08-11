@@ -725,7 +725,7 @@ export default function Home() {
       <span className="eyebrow">21 AUGUST — 4 SEPTEMBER 2026</span><h2>One journey.<br/><em>Zero chaos.</em></h2>
       <p>Documents, detailed country budgets, hotels, airport transfers, attractions and every booking—available offline.</p>
       <div className="date-pill"><CalendarDaysIcon/><b>15 days</b><span>Sharjah → Malaysia → Singapore → Indonesia → Abu Dhabi</span></div>
-      <div className="hero-actions"><button className="primary live-launch" onClick={() => setLiveMode(true)}><SparklesIcon/> Launch Live Mode</button><button className="secondary" onClick={() => setShowAdd(true)}><PlusIcon/> Add trip item</button><button className="secondary" onClick={() => setTab('documents')}><FolderIcon/> Traveler folders</button></div>
+      <div className="hero-actions"><button className="primary live-launch" onClick={() => setLiveMode(true)}><SparklesIcon/> Enter Journey Mode</button><button className="secondary" onClick={() => setShowAdd(true)}><PlusIcon/> Add trip item</button><button className="secondary" onClick={() => setTab('documents')}><FolderIcon/> Traveler folders</button></div>
     </motion.div>
     <motion.div className="boarding-pass" initial={{ opacity: 0, rotate: 4, x: 40 }} animate={{ opacity: 1, rotate: -2, x: 0 }} whileHover={{ rotate: 0, scale: 1.02 }}>
       <div className="pass-notch pass-notch-left"/><div className="pass-notch pass-notch-right"/>
@@ -746,7 +746,7 @@ export default function Home() {
       <div className="sgac-actions"><button className="secondary small" onClick={openOfficialSgac}>Open official SGAC</button>{!sgacSubmitted && <button className="primary small" onClick={markSgacSubmitted}><CheckCircleIcon/> Mark submitted</button>}</div>
     </section>
 
-    {liveMode && <TripLiveMode bookings={bookings} itinerary={items} hotels={hotels} now={now} onClose={() => setLiveMode(false)} onOpenBookings={() => { setLiveMode(false); setTab('bookings'); }} onOpenItinerary={() => { setLiveMode(false); setTab('itinerary'); }} onOpenDocuments={() => { setLiveMode(false); setTab('documents'); }} onOpenStays={() => { setLiveMode(false); setTab('stays'); }}/>}
+    {liveMode && <TripLiveMode bookings={bookings} itinerary={items} hotels={hotels} expenses={expenses} now={now} onClose={() => setLiveMode(false)} onOpenBookings={() => { setLiveMode(false); setTab('bookings'); }} onOpenItinerary={() => { setLiveMode(false); setTab('itinerary'); }} onOpenDocuments={() => { setLiveMode(false); setTab('documents'); }} onOpenStays={() => { setLiveMode(false); setTab('stays'); }}/>}
 
     <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'food', 'nearby', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
 

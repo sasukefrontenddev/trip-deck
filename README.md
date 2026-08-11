@@ -372,3 +372,23 @@ Trip Deck now includes an active travel-day command center that sits on top of t
 
 ## Smart group settlement (V31)
 Expenses now calculate a minimum-transfer settlement plan in AED using the saved converted expense values. Instead of only showing what each traveler paid or was allocated, Trip Deck suggests the smallest practical set of person-to-person paybacks needed to settle the group.
+
+## ✦ V32 — Journey Mode
+
+Trip Deck now has a cinematic **Journey Mode** layered on top of the existing app. It is intentionally not another data-entry tab: it reacts to the journey state and turns the saved trip data into a travel-day experience.
+
+- **Pre-trip cinematic countdown** before the first flight.
+- **Live Journey Map** showing SHJ → KUL → SIN → CGK → AUH with completed legs and animated progress while in flight.
+- **Airport Flow** that moves through Head out → Airport → Check-in → Security → Gate → Board → Airborne using flight time and live provider status.
+- **In-flight state** with a dedicated route display and one-tap arrival preparation.
+- **Arrival sequence** for immigration, baggage, connectivity and hotel transfer.
+- **What Now? guidance** with the next activity, commute estimate and leave-by cue.
+- **Day Board** showing the active destination's schedule, pace and commute load.
+- **Schedule Radar** continues to surface clashes and tight transfers.
+- **Trip Deck Orb** provides contextual shortcuts for next plans, documents, flights, stays, rescue mode and Trip Wrapped.
+- **Trip Rescue** keeps local emergency, hotel and next-flight essentials one tap away.
+- **Trip Wrapped** turns the journey into a visual recap using flights, places, planned distance and tracked spending.
+- **Generate Trip Memory** creates a shareable 1080×1350 PNG poster directly in the browser without uploading trip data to an image service.
+
+Journey Mode automatically changes between pre-trip, airport, boarding, in-flight, arrival, city-day and journey-complete states while keeping every existing Trip Deck workflow available underneath.
+
