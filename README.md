@@ -1,148 +1,615 @@
 <div align="center">
 
-# ✦ TRIPDECK v7
+# ✦ TRIP DECK
 
-### Your offline-first, AI-assisted travel operating system
+### Your private, offline-first group travel operating system
 
-**Plan smarter. Move cheaper. Travel calmer. Keep everything in one place.**
+**Plan smarter. Travel calmer. Keep flights, stays, plans, costs and private documents in one place.**
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-Offline_First-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)
-![IndexedDB](https://img.shields.io/badge/IndexedDB-Local_Data-0B6E4F?style=for-the-badge)
-![Framer Motion](https://img.shields.io/badge/Framer_Motion-Animated-FF0055?style=for-the-badge&logo=framer)
-![Build](https://img.shields.io/badge/Release-v7_Smart-00D4FF?style=for-the-badge)
+![Redis](https://img.shields.io/badge/Upstash_Redis-Cloud_Sync-00E9A3?style=for-the-badge&logo=redis&logoColor=white)
+![IndexedDB](https://img.shields.io/badge/IndexedDB-Local_First-0B6E4F?style=for-the-badge)
+![Encryption](https://img.shields.io/badge/AES--256--GCM-Private_Vaults-1E90FF?style=for-the-badge)
+![Build](https://img.shields.io/badge/Trip-21_Aug_→_4_Sep_2026-00D4FF?style=for-the-badge)
 
-**Malaysia · Singapore · Jakarta**
+**Malaysia · Singapore · Indonesia**
 
 </div>
 
 ---
 
-## ⚡ What is TripDeck?
+## ⚡ What is Trip Deck?
 
-TripDeck is a private, offline-capable travel command centre built for a multi-country journey across **Malaysia, Singapore and Indonesia**.
+**Trip Deck** is a private, offline-first group travel companion built for a multi-country journey across **Malaysia, Singapore and Indonesia**.
 
-It combines bookings, hotels, itinerary planning, expenses, documents, attractions, local transport guidance, weather-aware recommendations and smart trip automation inside one responsive PWA.
+It combines live flight intelligence, stays, detailed itineraries, expenses, private traveler documents, entry reminders, checklists, maps, trip-readiness tools and premium travel-day guidance inside one responsive PWA.
 
-The v7 build preserves the full original TripDeck experience and adds a new **Trip Intelligence** layer on top—without deleting existing tabs, records or workflows.
+> **Current journey:** 21 August → 4 September 2026  
+> **Route:** Sharjah → Kuala Lumpur → Singapore → Jakarta → Abu Dhabi
 
 ---
 
-## 🧠 v7 — Trip Intelligence
+## ✨ Experience highlights
 
-The new **Smart** tab turns stored trip data into practical, real-time travel guidance.
-
-| Intelligence module | What it does |
+| Area | What Trip Deck does |
 |---|---|
-| **Travel Readiness Score** | Checks hotels, bookings, itinerary, checklist and saved attractions |
-| **Flight Countdown** | Surfaces the next flight and time remaining |
-| **Budget Health** | Compares spending against country budgets |
-| **Weather-Aware Planner** | Generates a day plan using Open-Meteo conditions |
-| **Travel Modes** | Switch between Balanced, Family and Couple planning styles |
-| **Commute Command Centre** | Connects saved hotels with attraction routing |
-| **Local Transport Advisor** | Suggests metro, bus, walking and affordable alternatives |
-| **Photo Missions** | Adds location-based travel photo challenges |
-| **Achievement System** | Unlocks travel badges from completed activity |
-| **Prayer & Wellbeing Tools** | Adds mosque, halal-food and prayer-break shortcuts |
-| **Receipt Capture** | Attaches receipt images and creates expenses directly |
-| **Shareable Trip Summary** | Uses Web Share or creates a copyable trip snapshot |
-| **Hidden Gems Engine** | Highlights mode-aware and lesser-known attractions |
-
-All Smart actions write into the existing IndexedDB itinerary and expense stores, keeping the app unified rather than creating isolated feature silos.
+| **Trip Pulse** | Shows the next flight, next plan, upcoming stay, countdown and readiness |
+| **Travel Day Companion** | Brings terminal, gate, check-in, hotel, next activity and spending into one panel |
+| **Live Flights** | Enriches saved flights with status, terminals, gate, aircraft and revised times |
+| **Country Itinerary** | Organizes Malaysia, Singapore and Indonesia plans day-by-day and time-by-time |
+| **PDF Import** | Parses itinerary PDFs and converts them into structured plans |
+| **Commute Intelligence** | Adds route, distance, travel time, mode and estimated transport cost |
+| **Stay Planner** | Keeps hotels organized by destination with map shortcuts |
+| **Private Vaults** | Gives every traveler a password-protected encrypted document folder |
+| **Cloud + Offline** | Loads locally first through IndexedDB and syncs in the background through Redis |
+| **Entry & Check-in Reminders** | Covers SGAC and upcoming online flight check-in |
+| **Group Expenses** | Uses country-aware traveler counts for shared costs |
+| **Toolkit** | Includes readiness, packing and customizable trip-preparation checklists |
 
 ---
 
-## 🗺️ Country Explorer
-
-Country Explorer is an additive experience connected to the original overview cards.
-
-### Included
-
-- Clickable country overview cards
-- Animated mobile explorer sheet
-- Expanded attraction datasets for Malaysia, Singapore and Jakarta
-- Local-currency ticket pricing with approximate AED values
-- Adult, child and free-entry labels
-- Last-checked dates and pricing disclaimers
-- Search and category filters
-- Wishlist, saved and visited states
-- Direct itinerary insertion
-- Morning, afternoon and evening day planning
-- Google Maps directions
-- Indoor/outdoor, family, duration, best-time and accessibility details
-- Nearby food, shopping, ATM, mosque, hospital and transport shortcuts
-- Responsive card layouts and animated transitions
-
-### Hotel-to-attraction intelligence
-
-TripDeck uses the hotel saved in **Stays**, or a hotel-type booking when no Stay address is available.
-
-It then:
-
-1. Geocodes the hotel address through OpenStreetMap Nominatim.
-2. Calculates road distance and driving duration through OSRM.
-3. Displays estimated public-transport duration and fare.
-4. Opens Google Maps for live transit routing.
-5. Suggests the cheapest practical commute option for the country.
-
-> Public routing APIs may be rate-limited and require an internet connection. Fares, ticket prices and journey times are estimates and should be verified before travel.
-
----
-
-## 🚀 Core platform
-
-TripDeck keeps the complete original feature set intact:
-
-- Overview dashboard and country cards
-- Manual flight entry and optional live flight lookup
-- Hotel and activity booking records
-- Existing itinerary planner
-- Traveler document vault
-- Multi-currency expense tracking
-- Country budget management
-- Hotel and stay planner
-- Manual attraction creation
-- Readiness checklist
-- Emergency information card
-- JSON backup and export tools
-- Browser notification flow
-- PWA installation and offline app-shell support
-- Framer Motion animations
-- IndexedDB persistence for records and file blobs
-
----
 
 ## 🧭 Confirmed journey
 
 ```text
-Dubai ──▶ Malaysia ──▶ Singapore ──▶ Jakarta ──▶ Dubai
+Sharjah ──▶ Kuala Lumpur ──▶ Singapore ──▶ Jakarta ──▶ Abu Dhabi
 ```
 
-| Milestone | Date |
-|---|---:|
-| Depart Dubai | 21 August 2026 |
-| Arrive Malaysia | 22 August 2026 |
-| Travel to Singapore | 26 August 2026 |
-| Travel to Indonesia | 30 August 2026 |
-| Return to Abu Dhabi | 4 September 2026 |
+| Country / leg | Dates | Travelers |
+|---|---|---:|
+| 🇲🇾 **Malaysia** | 22–26 Aug 2026 | 5 |
+| 🇸🇬 **Singapore** | 26–30 Aug 2026 | 6 |
+| 🇮🇩 **Indonesia** | 30 Aug–4 Sep 2026 | 5 |
 
-The country split can be edited in `app/page.tsx`.
+### ✈️ Flight sequence
+
+1. **SHJ → KUL** — 21 Aug 2026
+2. **KUL → SIN** — 26 Aug 2026
+3. **SIN → CGK** — 30 Aug 2026
+4. **CGK → AUH** — 4 Sep 2026
+
+Flights shown on Overview are automatically sorted chronologically.
 
 ---
 
-## 🛠️ Run locally
+## 🏠 Overview command centre
+
+The Overview is designed to answer one question quickly: **what matters next?**
+
+### Trip Pulse
+
+- Trip countdown / current trip state
+- Next upcoming flight
+- Next itinerary activity
+- Upcoming hotel stay
+- Group-readiness percentage
+- Direct shortcuts to the relevant section
+
+### Travel Day Companion
+
+The premium travel-day panel can surface:
+
+- Next flight and live status
+- Departure terminal
+- Gate
+- Check-in desk
+- Group size
+- Arrival hotel and address
+- First planned activity after arrival
+- Current trip spending
+- Quick access to Documents
+- Quick access to prep/checklists
+- Hotel directions
+
+> When the next flight is close, Trip Deck automatically gives the travel-day information more prominence.
+
+### Group readiness
+
+Shared preparation items include:
+
+- [ ] Passports ready
+- [ ] Visa / entry requirements checked
+- [ ] Travel insurance saved
+- [ ] eSIM / roaming ready
+- [ ] Airport transfers confirmed
+- [ ] Hotels confirmed
+- [ ] Singapore Arrival Card submitted
+
+---
+
+## ✈️ Flights & Bookings
+
+Trip Deck supports both manual flight management and optional live flight enrichment.
+
+### Live flight data
+
+When AeroDataBox is configured, Trip Deck can store and refresh:
+
+| Flight detail | Supported |
+|---|:---:|
+| Airline / flight number | ✅ |
+| Origin / destination | ✅ |
+| Scheduled departure / arrival | ✅ |
+| Revised departure / arrival | ✅ |
+| Departure terminal | ✅ |
+| Arrival terminal | ✅ |
+| Gate | ✅ |
+| Check-in desk | ✅ |
+| Aircraft model | ✅ |
+| Aircraft registration | ✅ |
+| Live operational status | ✅ |
+
+### Traveler-friendly status labels
+
+Provider statuses are normalized into clearer states such as:
+
+`EXPECTED` · `CONFIRMED` · `BOARDING OPEN` · `GATE CLOSED` · `DELAYED` · `IN FLIGHT` · `LANDED` · `CANCELLED` · `DIVERTED`
+
+### Cache-first behavior
+
+Saved flight information appears immediately from local storage.
+
+Live data refreshes in the background, so a slow external flight API does not need to hold up the Bookings or Overview UI.
+
+### Automatic next flight
+
+The home boarding pass advances automatically after a departed/completed leg and moves to the next upcoming flight.
+
+### Boarding pass details
+
+- Airline logo
+- Flight number
+- Route
+- Departure and arrival time
+- Departure and arrival terminal
+- Gate
+- Check-in desk
+- Aircraft
+- PNR
+- Passenger count
+- Live flight status
+
+### Flights Taken
+
+Completed flights are retained as a visual history with:
+
+- Airline logo
+- Flight number
+- Route
+- Date
+
+---
+
+## ⏰ Flight reminders
+
+### Online check-in
+
+Within the configured pre-flight window, Trip Deck can display an **Online check-in due** reminder.
+
+If browser notification permission is enabled, Trip Deck can also issue a one-time browser notification while the app is active.
+
+The reminder checker runs periodically, so you do not have to refresh at exactly the right time.
+
+---
+
+## 🇸🇬 Singapore Arrival Card
+
+Trip Deck includes a dedicated **Singapore Arrival Card (SGAC)** workflow.
+
+It can:
+
+- Detect the saved Singapore arrival flight
+- Calculate the valid SGAC window
+- Show when the submission window opens
+- Switch to **SUBMIT NOW** during the valid window
+- Link to Singapore ICA's official SGAC service
+- Let the group mark the task submitted
+- Persist completion in the synced checklist
+
+For the configured **26 August 2026** Singapore arrival, the valid window is:
+
+```text
+24 August 2026 → 26 August 2026
+```
+
+---
+
+## 🗓️ Country-wise itinerary
+
+The itinerary is organized by country:
+
+- 🇲🇾 Malaysia
+- 🇸🇬 Singapore
+- 🇮🇩 Indonesia
+
+Within each country, plans are grouped by **day** and ordered by **time**.
+
+### Itinerary entries can include
+
+| Detail | Example |
+|---|---|
+| Time | `11:45` |
+| Activity | Airport transfer |
+| Location | KLIA → Sky Suites KLCC |
+| Notes | Rest / luggage drop |
+| Booking cost | `MYR 70` |
+| Commute | `55–75 min` |
+| Mode | Grab / rail / walking |
+| Distance | Route estimate |
+| Group cost | Country-aware estimate |
+| Source | Manual / PDF import |
+
+Activities with usable location information include direct map actions.
+
+---
+
+## 📄 PDF itinerary importer
+
+Upload a text-based itinerary PDF and Trip Deck can convert it into structured plans.
+
+### Parser capabilities
+
+- Country detection
+- Date detection
+- Time detection
+- Activity extraction
+- Location extraction
+- Notes
+- MYR / RM prices
+- SGD / S$ prices
+- IDR / Rp prices
+
+Parsed activities are **saved and displayed before commute enrichment finishes**.
+
+That means slow geocoding or routing requests do not block the itinerary from appearing.
+
+### Commute enrichment
+
+Where possible, Trip Deck adds:
+
+- Route
+- Distance
+- Estimated duration
+- Suggested transport mode
+- Per-person transport cost
+- Approximate group transport cost
+
+> Text-based PDFs work best. Scanned or image-only PDFs require OCR before reliable parsing.
+
+---
+
+## 🏨 Stay Planner
+
+The Stay Planner keeps accommodation organized in trip order:
+
+1. 🇲🇾 Malaysia
+2. 🇸🇬 Singapore
+3. 🇮🇩 Indonesia
+
+Stay cards support:
+
+- Property name
+- Address
+- Check-in / check-out information
+- Edit
+- Direct map shortcut
+- Country-aware organization
+
+Saved hotel addresses can also feed Travel Day Companion and itinerary routing.
+
+---
+
+## 💳 Expenses & group splitting
+
+Trip Deck supports multi-currency travel spending and country-aware group sizes.
+
+| Country | Group size |
+|---|---:|
+| Malaysia | 5 |
+| Singapore | 6 |
+| Indonesia | 5 |
+
+Expenses can be associated with the relevant country and used in trip-spending summaries.
+
+---
+
+## 🔐 Private traveler document vaults
+
+Every traveler can have an independent password-protected document folder.
+
+### Privacy model
+
+A traveler must unlock their folder before its private document index is fetched.
+
+Trip Deck does **not** load every traveler's private document collection during normal application startup.
+
+### Encryption
+
+Private documents use browser-side encryption:
+
+```text
+Password
+  ↓
+PBKDF2-SHA-256
+  ↓
+Per-document derived key
+  ↓
+AES-256-GCM
+  ↓
+Encrypted Redis chunks
+```
+
+Key points:
+
+- Traveler password is never stored
+- File bytes are encrypted before cloud storage
+- New files use per-document salt / derivation metadata
+- Encryption keys are never stored in Redis
+- Changing/refeshing vault metadata does not invalidate newly encrypted files
+
+### Redis-backed document flow
+
+```text
+Unlock traveler
+      ↓
+Fetch traveler-scoped document index
+      ↓
+Show filenames / categories / sizes
+      ↓
+Tap Open file
+      ↓
+Fetch only that file's encrypted chunks
+      ↓
+Decrypt in memory
+      ↓
+Secure preview
+```
+
+This keeps vault unlock fast even when a traveler has many documents.
+
+### Document features
+
+- Upload
+- Open
+- Secure preview
+- Download
+- Open in new tab
+- Delete
+- Multi-select
+- Select all
+- Bulk delete
+- Lock folder
+
+Deletion uses Trip Deck-styled confirmation UI rather than browser-default dialogs.
+
+### iPhone / Safari handling
+
+Trip Deck avoids relying on persistent Blob/File values inside IndexedDB for private documents.
+
+Encrypted bytes stay cloud-backed and are fetched into memory when the selected file is opened.
+
+---
+
+## 💾 Offline-first architecture
+
+Trip Deck prioritizes local responsiveness.
+
+### Local-first reads
+
+Normal records render from IndexedDB first:
+
+```text
+IndexedDB
+├── Bookings
+├── Stays
+├── Itinerary
+├── Expenses
+├── Attractions
+└── Checklists
+```
+
+The UI does not wait for Redis before showing already-cached trip data.
+
+### Background synchronization
+
+```text
+UI
+ ↓
+IndexedDB immediately
+ ↓
+Background sync queue
+ ↓
+Upstash Redis
+```
+
+A failed sync mutation does not permanently block newer changes.
+
+> A completely new browser/device still needs an initial online hydration before it has a local cache.
+
+---
+
+## ☁️ Upstash Redis
+
+Redis provides shared/cross-device persistence for trip data.
+
+Typical synchronized records include:
+
+- Bookings
+- Stays
+- Itinerary
+- Expenses
+- Attractions
+- Checklists
+- Vault metadata
+- Encrypted document metadata and chunks
+
+Private documents use a separate traveler-scoped cloud flow rather than whole-app document hydration.
+
+---
+
+## 🧰 Toolkit
+
+### Checklist & Packing
+
+Users can:
+
+- Add custom preparation items
+- Mark items complete
+- Delete custom items
+- Keep checklist state synchronized
+
+Useful examples:
+
+`Power bank` · `Chargers` · `Travel adapter` · `Medicines` · `Cash` · `eSIM` · `Document copies`
+
+---
+
+## 🧭 Explorer, Food & Nearby
+
+Trip Deck includes destination-focused discovery areas for:
+
+- Attractions
+- Food
+- Nearby essentials
+- Destination exploration
+- Local trip planning
+
+Saved attractions can feed back into itinerary planning.
+
+---
+
+## 🗺️ Maps & routing
+
+Map shortcuts are integrated across the app:
+
+- Itinerary activities
+- Hotels / stays
+- Travel Day Companion
+- Attractions
+
+Route estimates may use external geocoding/routing services and therefore require internet connectivity.
+
+---
+
+## 📱 PWA experience
+
+Trip Deck is designed as an installable Progressive Web App.
+
+### Included
+
+- Responsive desktop/mobile interface
+- Installable home-screen experience
+- Offline application shell
+- IndexedDB local storage
+- Service worker
+- Cache versioning
+- Mobile-friendly private vaults
+- Secure mobile document preview
+- Horizontally scrollable navigation where required
+
+When testing a newly deployed build, a phone may briefly retain an older service-worker cache. Reload the site and allow the newest worker to activate.
+
+---
+
+## 🛰️ External services
+
+| Service | Purpose | API key |
+|---|---|---:|
+| **Upstash Redis** | Shared trip data + encrypted document chunks | Yes |
+| **AeroDataBox / RapidAPI** | Flight lookup and live enrichment | Yes |
+| **OpenStreetMap / geocoding** | Place lookup | No / provider-dependent |
+| **OSRM / routing** | Distance and route estimates | No |
+| **Google Maps** | Route hand-off | No |
+
+---
+
+## 🛠️ Technology
+
+![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)
+![React](https://img.shields.io/badge/React-UI-61DAFB?style=flat-square&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Redis](https://img.shields.io/badge/Upstash-Redis-00E9A3?style=flat-square&logo=redis)
+![PWA](https://img.shields.io/badge/PWA-Installable-5A0FC8?style=flat-square&logo=pwa)
+![WebCrypto](https://img.shields.io/badge/WebCrypto-AES--256--GCM-1E90FF?style=flat-square)
+
+- **Next.js**
+- **React**
+- **TypeScript**
+- **IndexedDB**
+- **Upstash Redis**
+- **Web Crypto API**
+- **Service Worker / PWA**
+- **AeroDataBox / RapidAPI**
+- Public routing and geocoding services where configured
+
+---
+
+## 🔐 Environment configuration
+
+Create `.env.local`:
+
+```env
+UPSTASH_REDIS_REST_URL=https://your-database.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_rest_token
+
+AERODATABOX_API_KEY=your_rapidapi_key
+```
+
+Legacy Vercel KV-style names are also supported where applicable:
+
+```env
+KV_REST_API_URL=
+KV_REST_API_TOKEN=
+```
+
+> Never expose Redis credentials through `NEXT_PUBLIC_` variables.
+
+---
+
+## ☁️ Upstash setup
+
+1. Create an Upstash Redis database.
+2. Copy its REST URL and REST token.
+3. Add them to `.env.local`.
+4. Add the same values to **Vercel → Project → Settings → Environment Variables**.
+5. Redeploy.
+6. Open Trip Deck once on each device so local caching can initialize.
+
+See `DATABASE-SETUP.md` for additional setup notes.
+
+---
+
+## ✈️ AeroDataBox setup
+
+1. Obtain an AeroDataBox / RapidAPI key.
+2. Add `AERODATABOX_API_KEY` to `.env.local`.
+3. Add the same value in Vercel.
+4. Redeploy.
+5. Add or look up a flight from Bookings.
+
+Manual flight entry remains available when live data is unavailable.
+
+---
+
+## 🚀 Run locally
 
 ### Requirements
 
 - Node.js 20+
 - npm
-- A modern Chromium, Firefox or Safari browser
+- Modern Chrome, Safari, Firefox or Edge
 
-### Start the app
+### Install
 
 ```bash
 npm install
+```
+
+### Development
+
+```bash
 npm run dev
 ```
 
@@ -152,149 +619,86 @@ Open:
 http://localhost:3000
 ```
 
-For production PWA installation and service-worker behaviour, deploy over HTTPS.
+### Production build
 
----
-
-## 🔐 Environment configuration
-
-Create `.env.local` only for integrations you plan to enable.
-
-```env
-AERODATABOX_API_KEY=your_rapidapi_key
+```bash
+npm run build
+npm start
 ```
 
-### AeroDataBox
-
-Used for optional flight schedule, airport, terminal, gate and status lookup.
-
-1. Subscribe to AeroDataBox through RapidAPI.
-2. Copy the RapidAPI key.
-3. Add `AERODATABOX_API_KEY` locally and in Vercel environment variables.
-4. Redeploy after changing production environment variables.
-
-Manual flight and hotel entry remains available without the API.
-
 ---
 
-## ✈️ Booking architecture
+## ▲ Vercel deployment
 
-TripDeck intentionally separates private booking references from live schedule data:
-
-- **PNR / booking reference:** entered manually and stored offline
-- **Flight schedule and status:** optionally fetched through AeroDataBox
-- **Hotel confirmation:** entered manually and stored offline
-- **Reminders:** triggered when TripDeck is open or active within the reminder window
-
-A universal public PNR lookup does not exist for arbitrary airline reservations, so TripDeck avoids pretending that unsupported access is available.
-
----
-
-## 💾 Offline-first data model
-
-TripDeck stores core travel data locally using IndexedDB.
-
-```text
-Browser
-├── Bookings
-├── Hotels / Stays
-├── Itinerary
-├── Attractions
-├── Expenses
-├── Documents
-├── Checklists
-├── Photo Missions
-└── Smart-state preferences
-```
-
-### Compatibility layer
-
-The current schema upgrades older TripDeck databases without deleting user data.
-
-- Legacy attraction records are merged with the expanded dataset
-- Wishlist, saved, visited, notes and planned dates are retained
-- Missing legacy price fields are rendered safely
-- Browser-extension hydration attributes are tolerated
-- Service-worker navigation uses a network-first strategy to reduce stale local builds
-
----
-
-## 📱 PWA behaviour
-
-TripDeck includes:
-
-- Web app manifest
-- Installable home-screen experience
-- Offline app-shell caching
-- Local IndexedDB persistence
-- Responsive mobile and desktop layouts
-- Service-worker cache versioning
-
-When testing a new build locally, stale service-worker files may remain active. If an older interface appears:
-
-1. Open DevTools.
-2. Go to **Application → Service Workers**.
-3. Click **Unregister**.
-4. Hard refresh the page.
-
----
-
-## 🔒 Privacy and security
-
-TripDeck is designed around local-first storage.
-
-- Documents and records remain in the current browser profile
-- Clearing browser site data deletes local TripDeck data
-- Sensitive files should not rely on one browser profile as their only backup
-- OAuth tokens must never be stored in IndexedDB
-- Production cloud sync should use encryption and secure HTTP-only cookies
-
-Use the built-in JSON backup/export workflow regularly.
-
----
-
-## 🧩 Project notes
-
-### Next.js workspace root
-
-`next.config.ts` explicitly sets `turbopack.root` to the current project directory. This prevents Next.js from treating a parent-folder lockfile as the workspace root.
-
-The included `tsconfig.json` already contains the TypeScript settings expected by Next.js 16.
-
-### Gmail integration status
-
-Gmail import is not active in the current runtime. The app uses manual booking entry instead.
-
-A future production integration should use a server-side OAuth flow, request the minimum required Gmail scope, parse booking emails with manual review, encrypt cloud data and keep OAuth tokens out of browser storage.
-
----
-
-## 🛰️ External services
-
-| Service | Purpose | API key required |
-|---|---|---:|
-| Open-Meteo | Weather-aware planning | No |
-| OpenStreetMap Nominatim | Hotel geocoding | No |
-| OSRM | Road distance and duration | No |
-| Google Maps | Live route hand-off | No |
-| AeroDataBox via RapidAPI | Optional flight lookup | Yes |
+1. Import/push the project to Vercel.
+2. Add the required environment variables.
+3. Deploy.
+4. Test Redis connectivity.
+5. Test one live flight lookup.
+6. Test document upload/unlock on desktop.
+7. Test the same traveler vault on mobile.
+8. Reload/install the PWA after major service-worker changes.
 
 ---
 
 ## 🧪 Production checklist
 
-Before deploying:
+Before deploying a major build:
 
 - [ ] Run `npm run build`
-- [ ] Configure `AERODATABOX_API_KEY` when required
+- [ ] Configure Redis environment variables
+- [ ] Configure `AERODATABOX_API_KEY` if live flights are required
 - [ ] Deploy over HTTPS
 - [ ] Test PWA installation
-- [ ] Verify IndexedDB migration with an older database
-- [ ] Test offline reload behaviour
-- [ ] Verify hotel geocoding and route fallback states
-- [ ] Confirm mobile tab overflow and bottom-sheet interactions
-- [ ] Recheck attraction prices and public-transport fares
-- [ ] Export a backup before major schema changes
+- [ ] Test cached/offline reload
+- [ ] Test Redis hydration on a second device
+- [ ] Test one encrypted document upload
+- [ ] Open the same vault on mobile
+- [ ] Test secure PDF/image preview
+- [ ] Verify flight ordering and next-flight switching
+- [ ] Verify SGAC reminder state
+- [ ] Verify itinerary PDF parsing
+- [ ] Verify stay/map shortcuts
+- [ ] Verify group expense counts
+
+---
+
+## 🛡️ Privacy & security
+
+Trip Deck should still be deployed using normal web-security practices.
+
+- Keep Redis credentials server-side
+- Never persist traveler passwords in plaintext
+- Keep HTTPS enabled
+- Never log decrypted private document content
+- Never send encryption keys to Redis
+- Lock a traveler folder on shared devices
+- Keep original copies of passports, visas and critical documents outside Trip Deck
+- Treat browser notifications as convenience reminders rather than guaranteed background alarms
+
+---
+
+## ⚠️ Important limitations
+
+- Live flight information depends on the external flight-data provider
+- Browser notifications have platform restrictions
+- Public geocoding/routing providers may rate-limit requests
+- Commute fares and durations are estimates
+- PDF parsing works best with selectable text
+- New devices need internet access for their first Redis hydration
+- Redis-backed private files need connectivity unless the required encrypted data is already available in the active session/device
+- Official travel requirements should always be verified with the airline, accommodation or relevant government authority
+
+---
+
+## 🎯 Product philosophy
+
+| Principle | Meaning |
+|---|---|
+| **Fast locally** | Stored trip information should appear without waiting for the cloud |
+| **Useful while moving** | The next flight, stay, plan and task should be immediately reachable |
+| **Private by default** | Traveler documents stay encrypted and traveler-scoped |
+| **One trip, one workspace** | Flights, stays, plans, costs, documents and reminders stay connected |
 
 ---
 
@@ -302,57 +706,10 @@ Before deploying:
 
 ## ✦ Built for the journey, not just the planning
 
-**TripDeck v7** transforms bookings, places, budgets and travel data into one calm, intelligent command centre.
+**Trip Deck** turns flights, stays, itineraries, costs, private documents and travel-day decisions into one calm, connected workspace.
 
-`OFFLINE-FIRST` · `SMART PLANNING` · `LOCAL DATA` · `MULTI-COUNTRY`
+`OFFLINE-FIRST` · `LIVE FLIGHTS` · `PRIVATE VAULTS` · `MULTI-COUNTRY` · `TRAVEL-DAY READY`
+
+### **TRIP DECK**
 
 </div>
-
-## Live flight status behaviour
-
-Saved flights keep working offline. When the app is online, TripDeck refreshes flights that are within 36 hours of departure (and up to 12 hours after the scheduled departure) every five minutes and whenever the tab becomes active again. The latest AeroDataBox status, departure/arrival revisions, terminals, gates, check-in desk and aircraft details are persisted back to the local cache and configured Redis database. The home boarding pass automatically moves to the next future flight after the current flight departs/enters flight or lands.
-
-## Flight-data enhancements
-- AeroDataBox lookup/live refresh stores departure terminal, arrival terminal, gate/check-in data, aircraft model and aircraft registration when supplied by the provider.
-- Flights within 24 hours show an in-app online check-in alert. If browser notifications are enabled, the device also receives a one-time online check-in notification while TripDeck is running/open.
-- Group sizes are country-aware: Malaysia 5, Singapore 6, Indonesia 5. These counts are used on the boarding pass and expense splitting.
-
-## Singapore Arrival Card reminder
-TripDeck detects the saved flight arriving in Singapore (SIN / Singapore destination) and automatically calculates the SG Arrival Card submission window as the arrival date plus the two preceding calendar days. The home page shows when the window opens, switches to a `SUBMIT NOW` state during the valid window, links to the official Singapore ICA SGAC e-Service, and can be marked submitted. The completion state is stored in the synced checklist. If browser notifications are enabled, a one-time notification is sent when the submission window is open. If no Singapore flight has been saved yet, the current itinerary arrival date of 26 August 2026 is used as the fallback.
-
-## Private traveler document vaults
-Each traveler document folder can now be protected with its own password. TripDeck derives an AES-256-GCM key in the browser using PBKDF2-SHA-256 (250,000 iterations). The password itself is never stored or sent to Redis. Document file bytes are encrypted before IndexedDB/cloud synchronization; opening a document requires that traveler's password. Older unencrypted documents are encrypted automatically when a vault is first created. Use a strong, unique password and keep it safe: TripDeck intentionally cannot recover a forgotten vault password.
-
-## V21 — Cross-device private document sync
-Private encrypted document payloads are synchronized in chunks instead of one large Redis value. This makes vault documents reliable across desktop and mobile browsers. Opening Documents while online refreshes vault/document metadata, and unlocking a traveler vault triggers an immediate document pull. Existing legacy single-value cloud documents are migrated to chunked storage automatically, while documents that only exist in an older desktop IndexedDB are backfilled to Redis from that device.
-
-
-## Mobile document sync reliability
-Private document uploads now drain independently of failed/stale sync mutations, encrypted file chunks use bounded concurrency with retries, and a newly unlocked mobile vault retries cloud hydration automatically. This fixes the case where documents remained visible on the desktop IndexedDB cache but never reached a second device.
-
-## Private document Redis flow (V22)
-Private documents are not included in the normal TripDeck cloud hydration. Each upload is encrypted in the browser and written to Redis in chunks; the upload UI only treats it as synced after Redis metadata and all chunks complete. After a traveler vault password is verified, TripDeck calls a traveler-scoped document endpoint and reconstructs only that traveler's encrypted files. Locking the folder removes that traveler's documents from the in-memory UI session. Document deletion uses a TripDeck-styled confirmation and deletes the Redis metadata/chunks before removing the local cache.
-
-## Document loading performance
-Traveler vault unlock now fetches only document metadata from Redis. Encrypted file chunks are downloaded lazily when the user opens an individual document, which keeps folder unlock fast on mobile and desktop. Cached encrypted blobs remain available offline when already downloaded on that device.
-
-## V26 document vault fixes
-- Traveler vault unlock now refreshes the latest vault salt/verifier from Redis before deriving the AES key, preventing stale mobile vault keys from causing AES-GCM `OperationError` failures.
-- Mobile document preview reserves a browser tab from the original tap before async Redis download/decryption, avoiding iOS popup blocking.
-- Documents support multi-select, select-all, and TripDeck-styled bulk deletion from Redis and local cache.
-
-### iOS document preview update
-Private documents now decrypt inside TripDeck and open in a same-page secure preview instead of navigating a pre-opened `about:blank` tab. This avoids iOS Safari closing the temporary tab after async Redis/WebCrypto work. PDF/image previews stay in the app, with explicit Open in new tab and Download actions after decryption has completed.
-
-
-### iOS document cache fix
-Private document Blob/File payloads are no longer written to IndexedDB. Safari/iOS can reject large Blob/File values with an object-store preparation error. TripDeck now stores only document metadata locally; encrypted bytes remain in Redis and are fetched into memory only when a file is opened. Database version 10 removes legacy local document blobs automatically.
-
-## Document encryption v2
-Private document uploads now use a per-document PBKDF2-SHA-256 salt and iteration count stored with encrypted Redis metadata. The traveler's password remains memory-only and is never persisted. This prevents a vault salt/verifier refresh from making newly uploaded files undecryptable across desktop and mobile. Legacy ciphertext created by older builds does not contain the original salt snapshot; if that older vault key has already been replaced, the original file must be uploaded once again after deploying this version.
-
-## Premium experience additions (V30)
-- Refined secure document preview actions with balanced Open / Download controls and a dedicated download icon treatment.
-- Added a Travel Day Companion to Overview. It combines the next flight status, terminal/gate/check-in desk, arrival stay, first itinerary plan, group size and trip spending in one quick-access panel.
-- Added contextual shortcuts from Travel Day Companion to documents, prep checklist and hotel directions.
-- Travel Day Companion automatically highlights when the next flight is within 48 hours.
