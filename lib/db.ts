@@ -94,7 +94,7 @@ interface TripDB extends DBSchema {
   syncQueue: { key: string; value: SyncMutation };
 }
 
-const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 9, {
+const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 10, {
   async upgrade(db, oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains('bookings')) db.createObjectStore('bookings', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
@@ -117,6 +117,20 @@ const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdec
     if (oldVersion < 8 && db.objectStoreNames.contains('bookings')) {
       const store = transaction.objectStore('bookings');
       for (const id of ['b1', 'b2', 'b3', 'b4']) await store.delete(id);
+    }
+    // Safari/iOS can fail when persisting large Blob/File values into IndexedDB.
+    // Documents are cloud-backed, so keep only metadata locally and fetch encrypted bytes on demand.
+    if (oldVersion < 10 && db.objectStoreNames.contains('documents')) {
+      const store = transaction.objectStore('documents');
+      let cursor = await store.openCursor();
+      while (cursor) {
+        const doc = cursor.value as TripDocument;
+        if (doc.blob !== undefined) {
+          const { blob: _blob, ...metadata } = doc;
+          await cursor.update(metadata as TripDocument);
+        }
+        cursor = await cursor.continue();
+      }
     }
   },
 });
@@ -362,12 +376,12 @@ export async function fetchTravelerDocumentsFromCloud(traveler: TravelerName): P
   for (const raw of response.values) {
     if (!raw || raw.traveler !== traveler || !raw.id) continue;
     remoteIds.add(raw.id);
-    const local = localById.get(raw.id);
-    // Preserve a previously downloaded local encrypted blob for instant/offline opening, but do
-    // not download the payload just to paint the document list.
+    // Keep only serializable document metadata in IndexedDB. Safari/iOS can throw
+    // "Error preparing Blob/File data to be stored in object store" for large encrypted blobs.
+    // The encrypted payload remains in Redis and is fetched only when the user opens this file.
     const value: TripDocument = {
       ...raw,
-      blob: local?.blob,
+      blob: undefined,
       blobChunkCount: Number(raw.blobChunkCount || 0) || undefined,
       blobEncoding: raw.blobEncoding,
     };
@@ -379,28 +393,23 @@ export async function fetchTravelerDocumentsFromCloud(traveler: TravelerName): P
 }
 
 export async function fetchDocumentContentFromCloud(doc: TripDocument): Promise<TripDocument> {
-  if (doc.blob instanceof Blob && doc.blob.size > 0) return doc;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('This file is not cached on this device. Connect to the internet to open it.');
-  const hydrated = await downloadDocumentFromCloud(doc);
+  // Never persist the hydrated Blob/File in IndexedDB. This avoids Safari/iOS object-store
+  // serialization failures. The decrypted/encrypted bytes live only in memory for this open.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to open this private document.');
+  const hydrated = await downloadDocumentFromCloud({ ...doc, blob: undefined });
   if (!hydrated?.blob) throw new Error('The encrypted file could not be downloaded from cloud storage.');
-  const db = await dbPromise!;
-  await db.put('documents', hydrated);
   return hydrated as TripDocument;
 }
 
 export async function putDocumentCloudFirst(value: TripDocument): Promise<string> {
   const db = await dbPromise!;
-  // Keep a local encrypted copy for offline access, but only report success after Redis has it.
-  await db.put('documents', value);
-  try {
-    await syncDocumentToCloud(value);
-    // Clear any queued duplicate upload for the same document.
-    const queued = await db.getAll('syncQueue');
-    await Promise.all(queued.filter(m => m.store === 'documents' && m.key === value.id && m.operation === 'put').map(m => db.delete('syncQueue', m.id)));
-  } catch (error) {
-    await queueMutation({ store: 'documents', operation: 'put', key: value.id, value });
-    throw error;
-  }
+  // Upload encrypted bytes to Redis first. Do not put Blob/File payloads into IndexedDB on
+  // Safari/iOS; only metadata is persisted locally after cloud upload succeeds.
+  await syncDocumentToCloud(value);
+  const { blob: _blob, ...metadata } = value;
+  await db.put('documents', metadata as TripDocument);
+  const queued = await db.getAll('syncQueue');
+  await Promise.all(queued.filter(m => m.store === 'documents' && m.key === value.id).map(m => db.delete('syncQueue', m.id)));
   return value.id;
 }
 

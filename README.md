@@ -343,3 +343,7 @@ Traveler vault unlock now fetches only document metadata from Redis. Encrypted f
 
 ### iOS document preview update
 Private documents now decrypt inside TripDeck and open in a same-page secure preview instead of navigating a pre-opened `about:blank` tab. This avoids iOS Safari closing the temporary tab after async Redis/WebCrypto work. PDF/image previews stay in the app, with explicit Open in new tab and Download actions after decryption has completed.
+
+
+### iOS document cache fix
+Private document Blob/File payloads are no longer written to IndexedDB. Safari/iOS can reject large Blob/File values with an object-store preparation error. TripDeck now stores only document metadata locally; encrypted bytes remain in Redis and are fetched into memory only when a file is opened. Database version 10 removes legacy local document blobs automatically.
