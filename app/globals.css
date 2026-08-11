@@ -404,3 +404,61 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .checklist-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:4px 0 14px}.checklist-add input{min-width:0;border:1px solid var(--control-border);background:var(--control-bg);border-radius:12px;color:var(--text);padding:0 12px;height:42px}.checklist-add input:focus{border-color:rgba(131,243,199,.5);outline:none;box-shadow:0 0 0 3px rgba(131,243,199,.07)}.checklist-row{display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:8px;align-items:center}.checklist-row>label{min-width:0}.checklist-row.done{opacity:.62}.checklist-delete{width:30px;height:30px;border:1px solid rgba(255,100,100,.12);border-radius:9px;background:rgba(255,90,90,.045);color:#d99494;padding:7px;cursor:pointer}.checklist-delete:hover{background:rgba(255,90,90,.1);color:#ffadad}.checklist-delete svg{width:100%;height:100%}
 @media(max-width:900px){.trip-pulse-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.trip-pulse{padding:14px}.trip-pulse-head{align-items:flex-start}.trip-pulse-head h3{font-size:19px}.trip-pulse-grid{grid-template-columns:1fr}.trip-pulse-grid>button{padding:12px}.hotel-actions{gap:5px}.hotel-actions>a,.hotel-actions>button{padding:7px 8px}.checklist-add{grid-template-columns:1fr}.checklist-add button{width:100%}}
+
+/* V29: visual cleanup — stays, chronological overview flights, itinerary readability, preview actions */
+.hotel-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch}
+.hotel-card{display:flex;flex-direction:column;min-width:0;padding:18px}
+.hotel-top{grid-template-columns:auto minmax(0,1fr);align-items:start;gap:11px}
+.hotel-top>div:nth-child(2){min-width:0}
+.hotel-top h3{font-size:18px;line-height:1.22;margin:4px 0 0;overflow-wrap:anywhere}
+.hotel-actions{grid-column:1/-1;margin:4px 0 0;justify-content:flex-start;width:100%}
+.hotel-actions>a,.hotel-actions>button{min-height:34px;justify-content:center;padding:8px 12px}
+.hotel-card>p{min-height:0;margin:14px 0 4px;line-height:1.5;overflow-wrap:anywhere}
+.hotel-metrics{margin:14px 0 12px;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.hotel-metrics div{min-width:0;padding:9px}
+.hotel-metrics b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hotel-card>small{margin-top:auto;line-height:1.45;padding-top:2px}
+
+/* Overview booking rows should read as a chronological journey. */
+.panel .booking{grid-template-columns:auto minmax(0,1fr) auto}
+.panel .booking>div:nth-child(2){min-width:0}
+.panel .booking>div:nth-child(2)>b,.panel .booking>div:nth-child(2)>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.rich-itinerary-card{padding:18px 20px}
+.rich-itinerary-card>h4{font-size:20px;line-height:1.32;margin:14px 0 8px;letter-spacing:-.02em;max-width:calc(100% - 8px)}
+.rich-itinerary-card>p{margin:0;color:var(--muted);line-height:1.45;min-width:0}
+.rich-itinerary-card>p span{min-width:0;overflow-wrap:anywhere}
+.itinerary-card-top{min-height:32px}
+.itinerary-card-actions{margin-left:auto;flex:0 0 auto}
+.itinerary-card-actions>a,.itinerary-card-actions>button{width:36px;height:36px;border:1px solid rgba(255,255,255,.055);border-radius:11px}
+.itinerary-notes{font-size:11px!important;line-height:1.6!important;padding-top:2px}
+.route-note{font-size:10px!important;line-height:1.55!important}
+.activity-cost{margin-top:14px}
+
+.document-preview-actions{padding:12px 18px;background:rgba(7,22,36,.98)}
+.document-preview-actions>div{width:100%;display:flex;justify-content:flex-end;gap:10px;align-items:center}
+.document-preview-actions a{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:174px;height:44px;padding:0 18px;border-radius:12px;font-weight:800;line-height:1;white-space:nowrap}
+.document-preview-actions a svg{width:18px;height:18px;flex:0 0 auto}
+.document-preview-stage{background:linear-gradient(180deg,#0a1522,#07111d);padding:10px}
+.document-preview-stage iframe{border-radius:8px;box-shadow:0 12px 45px rgba(0,0,0,.28)}
+
+@media(max-width:1100px){
+  .hotel-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:760px){
+  .hotel-grid{grid-template-columns:1fr}
+  .hotel-metrics{grid-template-columns:1fr 1fr 1fr}
+  .rich-itinerary-card{padding:15px}
+  .rich-itinerary-card>h4{font-size:17px}
+}
+@media(max-width:640px){
+  .document-preview-stage{padding:0}
+  .document-preview-stage iframe{border-radius:0;box-shadow:none}
+  .document-preview-actions>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .document-preview-actions a{min-width:0;width:100%;height:46px;padding:0 10px;font-size:12px}
+}
+@media(max-width:480px){
+  .hotel-metrics{grid-template-columns:1fr}
+  .hotel-actions>a,.hotel-actions>button{flex:1}
+  .document-preview-actions>div{grid-template-columns:1fr}
+}
