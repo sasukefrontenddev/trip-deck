@@ -144,6 +144,7 @@ export default function Home() {
   const [deleteDocumentDialog, setDeleteDocumentDialog] = useState<TripDocument | null>(null);
   const [deletingDocument, setDeletingDocument] = useState(false);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [documentPreview, setDocumentPreview] = useState<{ doc: TripDocument; url: string; blob: Blob } | null>(null);
   const [documentSelectionMode, setDocumentSelectionMode] = useState(false);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
@@ -353,40 +354,39 @@ export default function Home() {
     setDocumentSelectionMode(false);
   }
 
+  function closeDocumentPreview() {
+    setDocumentPreview(current => {
+      if (current) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  }
+
   async function openPrivateDocument(doc: TripDocument) {
     const key = await ensureTravelerVault(doc.traveler);
     if (!key || openingDocumentId === doc.id) return;
 
-    // Mobile Safari/Chrome can block window.open after an awaited network/decrypt operation.
-    // Reserve the preview tab synchronously from the user's tap, then navigate it when ready.
-    const previewWindow = window.open('about:blank', '_blank');
-    if (previewWindow) {
-      try {
-        previewWindow.document.title = `Opening ${doc.name}…`;
-        previewWindow.document.body.innerHTML = '<div style="font-family:system-ui;padding:24px;background:#071424;color:#d9e7f2;min-height:100vh">Securely opening document…</div>';
-      } catch {}
-    }
-
+    // Do not pre-open about:blank on iOS. Safari may discard or refuse to navigate that
+    // temporary tab after an async Redis fetch + WebCrypto decrypt. Instead, fetch/decrypt
+    // in the current app and render the ready Blob URL in a same-page secure preview.
     setOpeningDocumentId(doc.id);
     setDocumentSyncError('');
     try {
-      // The list is metadata-only. Fetch the encrypted payload only for the file the user opens.
       const ready = await fetchDocumentContentFromCloud(doc);
       setDocuments(current => current.map(item => item.id === ready.id ? ready : item));
       const blob = await decryptDocumentBlob(ready, key);
       const url = URL.createObjectURL(blob);
-      if (previewWindow && !previewWindow.closed) previewWindow.location.replace(url);
-      else window.location.assign(url);
-      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      setDocumentPreview(current => {
+        if (current) URL.revokeObjectURL(current.url);
+        return { doc: ready, url, blob };
+      });
     } catch (error) {
-      try { previewWindow?.close(); } catch {}
       const message = error instanceof Error ? error.message : 'This document could not be opened.';
       if (error instanceof DOMException && error.name === 'OperationError') {
         delete vaultKeys.current[doc.traveler];
         setUnlockedTravelers(current => current.filter(name => name !== doc.traveler));
         setDocuments(current => current.filter(item => item.traveler !== doc.traveler));
         setDocumentSyncError('');
-        setVaultDialog({ target: doc.traveler, mode: 'unlock', password: '', confirm: '', error: 'Your phone had an older cached security key. Enter the password again to refresh it from Redis.', busy: false });
+        setVaultDialog({ target: doc.traveler, mode: 'unlock', password: '', confirm: '', error: 'This file could not be decrypted with the cached key. Enter the traveler password again to refresh the vault key from Redis.', busy: false });
       } else {
         setDocumentSyncError(message);
       }
@@ -714,6 +714,12 @@ export default function Home() {
 
       {tab === 'toolkit' && <motion.section className="content" key="toolkit" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="section-heading"><div><span className="eyebrow">TRAVEL SMARTER</span><h3>Group toolkit</h3></div><button className="secondary small" onClick={exportTrip}><ArrowDownTrayIcon/> Backup data</button></div><div className="tool-grid"><section className="panel glass"><div className="panel-title"><h3>Checklist</h3><ClipboardDocumentCheckIcon/></div><div className="checklist">{checklist.map(item => <label key={item.id} className={item.done ? 'done' : ''}><input type="checkbox" checked={item.done} onChange={async () => { await put('checklist', { ...item, done: !item.done }); await refresh(); }}/><div><b>{item.title}</b><span>{item.category}</span></div></label>)}</div></section><section className="panel glass emergency"><div className="panel-title"><h3>Emergency card</h3><PhoneIcon/></div><div className="emergency-list"><div><b>Malaysia</b><span>Emergency: 999</span></div><div><b>Singapore</b><span>Police: 999 · Fire/Ambulance: 995</span></div><div><b>Indonesia</b><span>Emergency: 112</span></div></div></section></div></motion.section>}
     </AnimatePresence>
+
+    <AnimatePresence>{documentPreview && <motion.div className="document-preview-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={closeDocumentPreview}><motion.div className="document-preview-modal" initial={{opacity:0,y:18,scale:.99}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:10,scale:.99}} onMouseDown={e=>e.stopPropagation()}>
+      <header className="document-preview-header"><div><span className="eyebrow">SECURE DOCUMENT PREVIEW</span><b>{documentPreview.doc.name}</b><small>{documentPreview.doc.category} · {(documentPreview.doc.size/1024).toFixed(1)} KB</small></div><button className="secondary small" type="button" onClick={closeDocumentPreview}>Close</button></header>
+      <div className="document-preview-stage">{documentPreview.blob.type.startsWith('image/') ? <img src={documentPreview.url} alt={documentPreview.doc.name}/> : documentPreview.blob.type === 'application/pdf' || documentPreview.doc.name.toLowerCase().endsWith('.pdf') ? <iframe src={documentPreview.url} title={documentPreview.doc.name}/> : <div className="document-preview-unsupported"><DocumentTextIcon/><h4>Preview is not available for this file type</h4><p>The document decrypted successfully. Use Open in new tab or Download to view it with your device.</p></div>}</div>
+      <footer className="document-preview-actions"><a className="secondary" href={documentPreview.url} target="_blank" rel="noopener noreferrer">Open in new tab</a><a className="primary" href={documentPreview.url} download={documentPreview.doc.name}><ArrowDownTrayIcon/> Download</a></footer>
+    </motion.div></motion.div>}</AnimatePresence>
 
     <AnimatePresence>{vaultDialog && <motion.div className="vault-modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={closeVaultDialog}><motion.div className="vault-modal" initial={{opacity:0,y:18,scale:.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:10,scale:.98}} onMouseDown={e=>e.stopPropagation()}>
       <div className="vault-modal-icon"><ShieldCheckIcon/></div><div className="vault-modal-copy"><span className="eyebrow">PRIVATE DOCUMENT VAULT</span><h3>{vaultDialog.mode === 'create' ? `Protect ${vaultDialog.target}'s folder` : `Unlock ${vaultDialog.target}'s folder`}</h3><p>{vaultDialog.mode === 'create' ? 'Create a private password. Files are encrypted on this device before they are stored or synced.' : 'Enter this traveler’s password to view, open or upload private documents.'}</p></div>

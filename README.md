@@ -340,3 +340,6 @@ Traveler vault unlock now fetches only document metadata from Redis. Encrypted f
 - Traveler vault unlock now refreshes the latest vault salt/verifier from Redis before deriving the AES key, preventing stale mobile vault keys from causing AES-GCM `OperationError` failures.
 - Mobile document preview reserves a browser tab from the original tap before async Redis download/decryption, avoiding iOS popup blocking.
 - Documents support multi-select, select-all, and TripDeck-styled bulk deletion from Redis and local cache.
+
+### iOS document preview update
+Private documents now decrypt inside TripDeck and open in a same-page secure preview instead of navigating a pre-opened `about:blank` tab. This avoids iOS Safari closing the temporary tab after async Redis/WebCrypto work. PDF/image previews stay in the app, with explicit Open in new tab and Download actions after decryption has completed.
