@@ -350,3 +350,9 @@ Private document Blob/File payloads are no longer written to IndexedDB. Safari/i
 
 ## Document encryption v2
 Private document uploads now use a per-document PBKDF2-SHA-256 salt and iteration count stored with encrypted Redis metadata. The traveler's password remains memory-only and is never persisted. This prevents a vault salt/verifier refresh from making newly uploaded files undecryptable across desktop and mobile. Legacy ciphertext created by older builds does not contain the original salt snapshot; if that older vault key has already been replaced, the original file must be uploaded once again after deploying this version.
+
+## Premium experience additions (V30)
+- Refined secure document preview actions with balanced Open / Download controls and a dedicated download icon treatment.
+- Added a Travel Day Companion to Overview. It combines the next flight status, terminal/gate/check-in desk, arrival stay, first itinerary plan, group size and trip spending in one quick-access panel.
+- Added contextual shortcuts from Travel Day Companion to documents, prep checklist and hotel directions.
+- Travel Day Companion automatically highlights when the next flight is within 48 hours.
