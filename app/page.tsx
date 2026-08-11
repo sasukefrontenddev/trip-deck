@@ -19,7 +19,7 @@ import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
   ItineraryItem, put, remove, syncAllFromCloud, syncStoreFromCloud, TRAVELERS, TravelerName, TripDocument, DocumentVault,
-  fetchTravelerDocumentsFromCloud, fetchDocumentContentFromCloud, putDocumentCloudFirst, removeDocumentCloudFirst
+  fetchTravelerDocumentsFromCloud, fetchDocumentContentFromCloud, putDocumentCloudFirst, removeDocumentCloudFirst, fetchVaultFromCloud
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
 import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
@@ -144,6 +144,10 @@ export default function Home() {
   const [deleteDocumentDialog, setDeleteDocumentDialog] = useState<TripDocument | null>(null);
   const [deletingDocument, setDeletingDocument] = useState(false);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [documentSelectionMode, setDocumentSelectionMode] = useState(false);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function refresh() {
     // Private documents are deliberately excluded from normal app hydration. They are fetched
@@ -314,8 +318,13 @@ export default function Home() {
         for (const doc of legacyDocs) if (doc.blob instanceof Blob) await putDocumentCloudFirst(await encryptDocumentBlob(doc, doc.blob, key));
         await refresh();
       } else {
-        const existing = vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
+        // Always prefer the latest Redis vault metadata before deriving the AES key.
+        // A phone may have an older cached salt/verifier that still accepts the same password
+        // but derives a different key, causing AES-GCM decrypt to fail with OperationError.
+        const cloudVault = await fetchVaultFromCloud(target);
+        const existing = cloudVault || vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
         if (!existing) throw new Error('This private vault could not be found. Refresh the page and try again.');
+        if (cloudVault) setVaults(current => [...current.filter(v => v.traveler !== target), cloudVault]);
         key = await unlockVault(existing, password);
         if (!key) throw new Error('Incorrect password.');
       }
@@ -340,11 +349,24 @@ export default function Home() {
     setUnlockedTravelers(current => current.filter(name => name !== target));
     setDocuments(current => current.filter(doc => doc.traveler !== target));
     setDocumentSyncError('');
+    setSelectedDocumentIds([]);
+    setDocumentSelectionMode(false);
   }
 
   async function openPrivateDocument(doc: TripDocument) {
     const key = await ensureTravelerVault(doc.traveler);
     if (!key || openingDocumentId === doc.id) return;
+
+    // Mobile Safari/Chrome can block window.open after an awaited network/decrypt operation.
+    // Reserve the preview tab synchronously from the user's tap, then navigate it when ready.
+    const previewWindow = window.open('about:blank', '_blank');
+    if (previewWindow) {
+      try {
+        previewWindow.document.title = `Opening ${doc.name}…`;
+        previewWindow.document.body.innerHTML = '<div style="font-family:system-ui;padding:24px;background:#071424;color:#d9e7f2;min-height:100vh">Securely opening document…</div>';
+      } catch {}
+    }
+
     setOpeningDocumentId(doc.id);
     setDocumentSyncError('');
     try {
@@ -353,10 +375,21 @@ export default function Home() {
       setDocuments(current => current.map(item => item.id === ready.id ? ready : item));
       const blob = await decryptDocumentBlob(ready, key);
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (previewWindow && !previewWindow.closed) previewWindow.location.replace(url);
+      else window.location.assign(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch (error) {
-      setDocumentSyncError(error instanceof Error ? error.message : 'This document could not be opened.');
+      try { previewWindow?.close(); } catch {}
+      const message = error instanceof Error ? error.message : 'This document could not be opened.';
+      if (error instanceof DOMException && error.name === 'OperationError') {
+        delete vaultKeys.current[doc.traveler];
+        setUnlockedTravelers(current => current.filter(name => name !== doc.traveler));
+        setDocuments(current => current.filter(item => item.traveler !== doc.traveler));
+        setDocumentSyncError('');
+        setVaultDialog({ target: doc.traveler, mode: 'unlock', password: '', confirm: '', error: 'Your phone had an older cached security key. Enter the password again to refresh it from Redis.', busy: false });
+      } else {
+        setDocumentSyncError(message);
+      }
     } finally {
       setOpeningDocumentId(current => current === doc.id ? null : current);
     }
@@ -404,6 +437,31 @@ export default function Home() {
     } finally {
       setDeletingDocument(false);
     }
+  }
+
+  function toggleDocumentSelection(id: string) {
+    setSelectedDocumentIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+  }
+
+  function clearDocumentSelection() {
+    setSelectedDocumentIds([]);
+    setDocumentSelectionMode(false);
+  }
+
+  async function confirmBulkDeleteDocuments() {
+    if (!selectedDocumentIds.length || bulkDeleting) return;
+    setBulkDeleting(true);
+    setDocumentSyncError('');
+    const ids = [...selectedDocumentIds];
+    const results = await Promise.allSettled(ids.map(id => removeDocumentCloudFirst(id)));
+    const failures = ids.filter((_, index) => results[index].status === 'rejected');
+    const deleted = ids.filter(id => !failures.includes(id));
+    setDocuments(current => current.filter(doc => !deleted.includes(doc.id)));
+    setSelectedDocumentIds(failures);
+    setBulkDeleting(false);
+    setBulkDeleteDialog(false);
+    if (failures.length) setDocumentSyncError(`${failures.length} selected file${failures.length === 1 ? '' : 's'} could not be deleted from Redis. Please retry.`);
+    else clearDocumentSelection();
   }
 
   async function enrichImportedItinerary(imported: ItineraryItem[], fileName: string) {
@@ -634,7 +692,8 @@ export default function Home() {
         {!travelerUnlocked ? <div className="vault-lock glass"><ShieldCheckIcon/><div><b>{selectedVault ? `${traveler}'s private vault is locked` : `Protect ${traveler}'s documents`}</b><span>{selectedVault ? 'Enter this traveler’s password to view or open their documents.' : 'Create a password. Existing files will be encrypted automatically and future uploads will be encrypted before cloud sync.'}</span></div><button className="primary small" onClick={() => ensureTravelerVault(traveler)}>{selectedVault ? 'Unlock documents' : 'Create private vault'}</button></div> : <><div className="vault-banner"><ShieldCheckIcon/><div><b>{traveler}&apos;s encrypted folder</b><span>Unlocked for this browser session. File contents are AES-256-GCM encrypted before local/cloud storage.</span></div></div><div className="upload-toolbar"><select value={docCategory} onChange={e => setDocCategory(e.target.value as TripDocument['category'])}><option>Passport</option><option>Visa</option><option>Ticket</option><option>Insurance</option><option>Hotel</option><option>Itinerary</option><option>Other</option></select><label className="primary small"><ArrowUpTrayIcon/> Upload for {traveler}<input type="file" multiple hidden onChange={e => uploadFiles(e.target.files)}/></label><button className="secondary small" onClick={() => lockTraveler(traveler)}>Lock folder</button></div>
         {documentSyncing === traveler && <div className="document-cloud-status"><span className="document-cloud-spinner"/><div><b>Checking private documents</b><span>Refreshing {traveler}&apos;s secure document list…</span></div></div>}
         {documentSyncError && <div className="document-cloud-error">{documentSyncError}<button onClick={() => loadTravelerDocuments(traveler, true)}>Retry cloud fetch</button></div>}
-        {selectedDocs.length === 0 && documentSyncing === traveler ? null : selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="No encrypted files were found in this traveler’s Redis vault. Upload a document here and TripDeck will confirm it reaches cloud storage before showing it as synced."/> : <div className="doc-grid">{selectedDocs.map(doc => <article className="doc-card" key={doc.id}><DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB · {doc.encrypted ? 'Encrypted' : 'Legacy file'}</span></div><div className="doc-actions"><button className="doc-open-button" disabled={openingDocumentId===doc.id} onClick={() => openPrivateDocument(doc)}>{openingDocumentId===doc.id ? 'Opening…' : 'Open file'}</button><button className="doc-delete-button" aria-label={`Delete ${doc.name}`} onClick={() => setDeleteDocumentDialog(doc)}><TrashIcon/></button></div></article>)}</div>}</>}
+        {selectedDocs.length > 0 && <div className="document-selection-toolbar"><button className={`secondary small ${documentSelectionMode ? 'active' : ''}`} onClick={() => { setDocumentSelectionMode(value => !value); setSelectedDocumentIds([]); }}>{documentSelectionMode ? 'Cancel selection' : 'Select files'}</button>{documentSelectionMode && <><button className="secondary small" onClick={() => setSelectedDocumentIds(selectedDocumentIds.length === selectedDocs.length ? [] : selectedDocs.map(doc => doc.id))}>{selectedDocumentIds.length === selectedDocs.length ? 'Clear all' : 'Select all'}</button><span>{selectedDocumentIds.length} selected</span><button className="danger-action small" disabled={!selectedDocumentIds.length} onClick={() => setBulkDeleteDialog(true)}><TrashIcon/> Delete selected</button></>}</div>}
+        {selectedDocs.length === 0 && documentSyncing === traveler ? null : selectedDocs.length === 0 ? <Empty icon={<DocumentTextIcon/>} title={`No files for ${traveler}`} text="No encrypted files were found in this traveler’s Redis vault. Upload a document here and TripDeck will confirm it reaches cloud storage before showing it as synced."/> : <div className="doc-grid">{selectedDocs.map(doc => { const selected = selectedDocumentIds.includes(doc.id); return <article className={`doc-card ${selected ? 'selected' : ''}`} key={doc.id}>{documentSelectionMode && <label className="doc-select-check"><input type="checkbox" checked={selected} onChange={() => toggleDocumentSelection(doc.id)}/><span/></label>}<DocumentTextIcon/><div><b>{doc.name}</b><span>{doc.category} · {(doc.size / 1024).toFixed(1)} KB · {doc.encrypted ? 'Encrypted' : 'Legacy file'}</span></div><div className="doc-actions">{!documentSelectionMode && <><button className="doc-open-button" disabled={openingDocumentId===doc.id} onClick={() => openPrivateDocument(doc)}>{openingDocumentId===doc.id ? 'Opening…' : 'Open file'}</button><button className="doc-delete-button" aria-label={`Delete ${doc.name}`} onClick={() => setDeleteDocumentDialog(doc)}><TrashIcon/></button></>}</div></article>})}</div>}</>}
       </motion.section>}
 
       {tab === 'expenses' && <motion.section className="content" key="expenses" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><ExpenseCenter country={expenseCountry} setCountry={setExpenseCountry} expenses={expenses} onRefresh={refresh}/></motion.section>}
@@ -668,6 +727,11 @@ export default function Home() {
       <div className="delete-doc-icon"><TrashIcon/></div><div className="vault-modal-copy"><span className="eyebrow">REMOVE PRIVATE DOCUMENT</span><h3>Delete this file?</h3><p><b>{deleteDocumentDialog.name}</b> will be permanently removed from {deleteDocumentDialog.traveler}&apos;s encrypted Redis vault and this device.</p></div>
       <div className="delete-doc-file"><DocumentTextIcon/><div><b>{deleteDocumentDialog.name}</b><span>{deleteDocumentDialog.category} · {(deleteDocumentDialog.size/1024).toFixed(1)} KB</span></div></div>
       <div className="vault-modal-actions"><button className="secondary" type="button" disabled={deletingDocument} onClick={()=>setDeleteDocumentDialog(null)}>Keep file</button><button className="danger-action" type="button" disabled={deletingDocument} onClick={confirmDeleteDocument}><TrashIcon/>{deletingDocument?'Deleting…':'Delete permanently'}</button></div>
+    </motion.div></motion.div>}</AnimatePresence>
+    <AnimatePresence>{bulkDeleteDialog && <motion.div className="vault-modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={()=>!bulkDeleting&&setBulkDeleteDialog(false)}><motion.div className="delete-doc-modal" initial={{opacity:0,y:18,scale:.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:10,scale:.98}} onMouseDown={e=>e.stopPropagation()}>
+      <div className="delete-doc-icon"><TrashIcon/></div><div className="vault-modal-copy"><span className="eyebrow">REMOVE PRIVATE DOCUMENTS</span><h3>Delete {selectedDocumentIds.length} selected file{selectedDocumentIds.length === 1 ? '' : 's'}?</h3><p>The selected files will be permanently removed from {traveler}&apos;s encrypted Redis vault and this device.</p></div>
+      <div className="bulk-delete-summary">{selectedDocs.filter(doc => selectedDocumentIds.includes(doc.id)).slice(0,4).map(doc => <div key={doc.id}><DocumentTextIcon/><span>{doc.name}</span></div>)}{selectedDocumentIds.length > 4 && <small>+{selectedDocumentIds.length - 4} more file{selectedDocumentIds.length - 4 === 1 ? '' : 's'}</small>}</div>
+      <div className="vault-modal-actions"><button className="secondary" type="button" disabled={bulkDeleting} onClick={()=>setBulkDeleteDialog(false)}>Keep files</button><button className="danger-action" type="button" disabled={bulkDeleting} onClick={confirmBulkDeleteDocuments}><TrashIcon/>{bulkDeleting?'Deleting…':'Delete selected'}</button></div>
     </motion.div></motion.div>}</AnimatePresence>
     <footer><CheckCircleIcon/> Offline-first group travel planner. Local files remain on this device.</footer>
     <AnimatePresence>{showAdd && <AddModal onClose={() => setShowAdd(false)} onSaved={async () => { await refresh(); setShowAdd(false); }}/>}</AnimatePresence>

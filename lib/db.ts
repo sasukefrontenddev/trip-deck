@@ -333,6 +333,19 @@ export async function syncAllFromCloud(stores: TripStoreName[] = ['bookings','it
 }
 
 
+export async function fetchVaultFromCloud(traveler: TravelerName): Promise<DocumentVault | null> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
+  try {
+    const response = await cloudRequest(`/api/data/vaults/${encodeURIComponent(traveler)}`) as { value?: DocumentVault | null; configured?: boolean };
+    if (!response?.configured || !response.value || response.value.traveler !== traveler) return null;
+    const db = await dbPromise!;
+    await db.put('vaults', response.value);
+    return response.value;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchTravelerDocumentsFromCloud(traveler: TravelerName): Promise<TripDocument[]> {
   const db = await dbPromise!;
   const locals = (await db.getAll('documents')).filter(doc => doc.traveler === traveler);

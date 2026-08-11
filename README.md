@@ -335,3 +335,8 @@ Private documents are not included in the normal TripDeck cloud hydration. Each 
 
 ## Document loading performance
 Traveler vault unlock now fetches only document metadata from Redis. Encrypted file chunks are downloaded lazily when the user opens an individual document, which keeps folder unlock fast on mobile and desktop. Cached encrypted blobs remain available offline when already downloaded on that device.
+
+## V26 document vault fixes
+- Traveler vault unlock now refreshes the latest vault salt/verifier from Redis before deriving the AES key, preventing stale mobile vault keys from causing AES-GCM `OperationError` failures.
+- Mobile document preview reserves a browser tab from the original tap before async Redis download/decryption, avoiding iOS popup blocking.
+- Documents support multi-select, select-all, and TripDeck-styled bulk deletion from Redis and local cache.
