@@ -52,6 +52,9 @@ export type TripDocument = {
   blobEncoding?: string;
   encrypted?: boolean;
   encryptionIv?: string;
+  encryptionSalt?: string;
+  encryptionIterations?: number;
+  encryptionKdf?: 'pbkdf2-sha256-v2';
   originalType?: string;
 };
 
@@ -94,7 +97,7 @@ interface TripDB extends DBSchema {
   syncQueue: { key: string; value: SyncMutation };
 }
 
-const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 10, {
+const dbPromise = typeof window === 'undefined' ? null : openDB<TripDB>('tripdeck', 11, {
   async upgrade(db, oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains('bookings')) db.createObjectStore('bookings', { keyPath: 'id' });
     if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });

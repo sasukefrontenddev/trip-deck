@@ -347,3 +347,6 @@ Private documents now decrypt inside TripDeck and open in a same-page secure pre
 
 ### iOS document cache fix
 Private document Blob/File payloads are no longer written to IndexedDB. Safari/iOS can reject large Blob/File values with an object-store preparation error. TripDeck now stores only document metadata locally; encrypted bytes remain in Redis and are fetched into memory only when a file is opened. Database version 10 removes legacy local document blobs automatically.
+
+## Document encryption v2
+Private document uploads now use a per-document PBKDF2-SHA-256 salt and iteration count stored with encrypted Redis metadata. The traveler's password remains memory-only and is never persisted. This prevents a vault salt/verifier refresh from making newly uploaded files undecryptable across desktop and mobile. Legacy ciphertext created by older builds does not contain the original salt snapshot; if that older vault key has already been replaced, the original file must be uploaded once again after deploying this version.

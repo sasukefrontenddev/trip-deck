@@ -55,6 +55,39 @@ export async function encryptDocumentBlob(doc: TripDocument, source: Blob, key: 
   };
 }
 
+
+export async function encryptDocumentBlobWithPassword(doc: TripDocument, source: Blob, password: string): Promise<TripDocument> {
+  if (password.length < 8) throw new Error('Unlock the traveler folder again before uploading documents.');
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iterations = ITERATIONS;
+  const bits = await deriveBits(password, salt, iterations);
+  const key = await keyFromBits(bits);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, await source.arrayBuffer());
+  return {
+    ...doc,
+    type: doc.type || source.type || 'application/octet-stream',
+    originalType: doc.originalType || doc.type || source.type || 'application/octet-stream',
+    encrypted: true,
+    encryptionIv: bytesToBase64(iv),
+    encryptionSalt: bytesToBase64(salt),
+    encryptionIterations: iterations,
+    encryptionKdf: 'pbkdf2-sha256-v2',
+    blob: new Blob([encrypted], { type: 'application/octet-stream' }),
+  };
+}
+
+export async function decryptDocumentBlobWithPassword(doc: TripDocument, password: string): Promise<Blob> {
+  if (!(doc.blob instanceof Blob)) throw new Error('Document content is not loaded on this device.');
+  if (!doc.encrypted) return doc.blob;
+  if (!doc.encryptionIv) throw new Error('Encrypted document is missing its IV.');
+  if (!doc.encryptionSalt) throw new Error('LEGACY_DOCUMENT_KEY');
+  const bits = await deriveBits(password, base64ToBytes(doc.encryptionSalt), doc.encryptionIterations || ITERATIONS);
+  const key = await keyFromBits(bits);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(doc.encryptionIv) }, key, await doc.blob.arrayBuffer());
+  return new Blob([plain], { type: doc.originalType || doc.type || 'application/octet-stream' });
+}
+
 export async function decryptDocumentBlob(doc: TripDocument, key: CryptoKey): Promise<Blob> {
   if (!(doc.blob instanceof Blob)) throw new Error('Document content is not loaded on this device.');
   if (!doc.encrypted) return doc.blob;

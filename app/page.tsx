@@ -23,7 +23,7 @@ import {
 } from '@/lib/db';
 import { convertWithRates, fetchLiveFx } from '@/lib/fx';
 import { extractPdfLines, parseItineraryLines } from '@/lib/itineraryImport';
-import { createVault, decryptDocumentBlob, encryptDocumentBlob, unlockVault } from '@/lib/vault';
+import { createVault, decryptDocumentBlob, decryptDocumentBlobWithPassword, encryptDocumentBlobWithPassword, unlockVault } from '@/lib/vault';
 
 const TRAVELER_COUNT_BY_COUNTRY: Record<CountryName, number> = { Malaysia: 5, Singapore: 6, Indonesia: 5 };
 const COUNTRY_TRAVELERS: Record<CountryName, TravelerName[]> = {
@@ -122,6 +122,9 @@ export default function Home() {
   const [vaults, setVaults] = useState<DocumentVault[]>([]);
   const [unlockedTravelers, setUnlockedTravelers] = useState<TravelerName[]>([]);
   const vaultKeys = useRef<Partial<Record<TravelerName, CryptoKey>>>({});
+  // Passwords are kept in memory only for the current unlocked session. They are never written
+  // to IndexedDB or Redis. Per-document salts make files independent from vault-salt rotation.
+  const vaultPasswords = useRef<Partial<Record<TravelerName, string>>>({});
   const [items, setItems] = useState<ItineraryItem[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -294,7 +297,8 @@ export default function Home() {
 
   async function ensureTravelerVault(target: TravelerName = traveler): Promise<CryptoKey | null> {
     const cached = vaultKeys.current[target];
-    if (cached) return cached;
+    if (cached && vaultPasswords.current[target]) return cached;
+    if (cached) delete vaultKeys.current[target];
     const existing = vaults.find(v => v.traveler === target) || (await getAll('vaults')).find(v => v.traveler === target);
     return await new Promise<CryptoKey | null>((resolve) => {
       if (vaultDialogResolver.current) vaultDialogResolver.current(null);
@@ -316,7 +320,7 @@ export default function Home() {
         await put('vaults', created.vault);
         key = created.key;
         const legacyDocs = (await getAll('documents')).filter(d => d.traveler === target && !d.encrypted);
-        for (const doc of legacyDocs) if (doc.blob instanceof Blob) await putDocumentCloudFirst(await encryptDocumentBlob(doc, doc.blob, key));
+        for (const doc of legacyDocs) if (doc.blob instanceof Blob) await putDocumentCloudFirst(await encryptDocumentBlobWithPassword(doc, doc.blob, password));
         await refresh();
       } else {
         // Always prefer the latest Redis vault metadata before deriving the AES key.
@@ -330,6 +334,7 @@ export default function Home() {
         if (!key) throw new Error('Incorrect password.');
       }
       vaultKeys.current[target] = key;
+      vaultPasswords.current[target] = password;
       setUnlockedTravelers(current => Array.from(new Set([...current, target])));
       const resolver = vaultDialogResolver.current; vaultDialogResolver.current = null; setVaultDialog(null); resolver?.(key);
 
@@ -347,6 +352,7 @@ export default function Home() {
 
   function lockTraveler(target: TravelerName = traveler) {
     delete vaultKeys.current[target];
+    delete vaultPasswords.current[target];
     setUnlockedTravelers(current => current.filter(name => name !== target));
     setDocuments(current => current.filter(doc => doc.traveler !== target));
     setDocumentSyncError('');
@@ -373,7 +379,15 @@ export default function Home() {
     try {
       const ready = await fetchDocumentContentFromCloud(doc);
       setDocuments(current => current.map(item => item.id === ready.id ? ready : item));
-      const blob = await decryptDocumentBlob(ready, key);
+      const sessionPassword = vaultPasswords.current[doc.traveler];
+      let blob: Blob;
+      if (ready.encryptionSalt) {
+        if (!sessionPassword) throw new Error('UNLOCK_AGAIN');
+        blob = await decryptDocumentBlobWithPassword(ready, sessionPassword);
+      } else {
+        // Backward-compatible path for files created before per-document encryption salts.
+        blob = await decryptDocumentBlob(ready, key);
+      }
       const url = URL.createObjectURL(blob);
       setDocumentPreview(current => {
         if (current) URL.revokeObjectURL(current.url);
@@ -381,12 +395,27 @@ export default function Home() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'This document could not be opened.';
-      if (error instanceof DOMException && error.name === 'OperationError') {
+      if (message === 'UNLOCK_AGAIN') {
         delete vaultKeys.current[doc.traveler];
+        delete vaultPasswords.current[doc.traveler];
         setUnlockedTravelers(current => current.filter(name => name !== doc.traveler));
-        setDocuments(current => current.filter(item => item.traveler !== doc.traveler));
-        setDocumentSyncError('');
-        setVaultDialog({ target: doc.traveler, mode: 'unlock', password: '', confirm: '', error: 'This file could not be decrypted with the cached key. Enter the traveler password again to refresh the vault key from Redis.', busy: false });
+        setVaultDialog({ target: doc.traveler, mode: 'unlock', password: '', confirm: '', error: 'Unlock this folder again to open the document.', busy: false });
+      } else if (error instanceof DOMException && error.name === 'OperationError') {
+        const legacy = !doc.encryptionSalt;
+        if (legacy) {
+          // Do not trap the user in an unlock loop. Old ciphertext can be tied to a vault salt
+          // that was replaced by a previous app version, so the original AES key is unrecoverable.
+          setDocumentSyncError('This file was encrypted by an older TripDeck vault key that is no longer available. Re-upload the original file once after deploying this update. New uploads use a document-specific salt and will keep working on desktop and mobile even if the vault metadata changes.');
+        } else {
+          delete vaultKeys.current[doc.traveler];
+          delete vaultPasswords.current[doc.traveler];
+          setUnlockedTravelers(current => current.filter(name => name !== doc.traveler));
+          setDocuments(current => current.filter(item => item.traveler !== doc.traveler));
+          setDocumentSyncError('');
+          setVaultDialog({ target: doc.traveler, mode: 'unlock', password: '', confirm: '', busy: false, error: 'The document could not be decrypted. Unlock the folder again and retry.', });
+        }
+      } else if (message === 'LEGACY_DOCUMENT_KEY') {
+        setDocumentSyncError('This legacy encrypted document needs to be re-uploaded once with the updated encryption format.');
       } else {
         setDocumentSyncError(message);
       }
@@ -409,7 +438,9 @@ export default function Home() {
     try {
       for (const file of Array.from(files)) {
         const doc: TripDocument = { id: crypto.randomUUID(), traveler, category: docCategory, name: file.name, type: file.type || 'file', size: file.size, createdAt: new Date().toISOString(), blob: file };
-        const encrypted = await encryptDocumentBlob(doc, file, key);
+        const sessionPassword = vaultPasswords.current[traveler];
+        if (!sessionPassword) throw new Error('Unlock the folder again before uploading.');
+        const encrypted = await encryptDocumentBlobWithPassword(doc, file, sessionPassword);
         // Cloud-first: the upload is considered complete only after encrypted Redis metadata
         // and all payload chunks have been written successfully.
         await putDocumentCloudFirst(encrypted);
@@ -528,7 +559,9 @@ export default function Home() {
       const vaultKey = await ensureTravelerVault(traveler);
       if (!vaultKey) throw new Error('Unlock or create this traveler’s private document vault before importing an itinerary PDF.');
       const itineraryDoc: TripDocument = { id: documentId, traveler, category: 'Itinerary', name: file.name, type: file.type || 'application/pdf', size: file.size, createdAt: new Date().toISOString(), blob: file };
-      await putDocumentCloudFirst(await encryptDocumentBlob(itineraryDoc, file, vaultKey));
+      const itineraryPassword = vaultPasswords.current[traveler];
+      if (!itineraryPassword) throw new Error('Unlock the traveler folder again before importing an itinerary PDF.');
+      await putDocumentCloudFirst(await encryptDocumentBlobWithPassword(itineraryDoc, file, itineraryPassword));
       const lines = await extractPdfLines(file);
       setItineraryImportStatus('Structuring days and times…');
       let parsed = parseItineraryLines(lines, itineraryCountry).map(item => ({ ...item, sourceDocumentId: documentId }));

@@ -1,4 +1,4 @@
-const CACHE = 'tripdeck-v19-ios-idb-safe';
+const CACHE = 'tripdeck-doc-key-v12';
 const APP_SHELL = ['/', '/icon.svg', '/tripdeck-logo.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));
