@@ -15,6 +15,7 @@ import FoodGuide from '@/components/FoodGuide';
 import NearbyHalal from '@/components/NearbyHalal';
 import DateTimePicker from '@/components/DateTimePicker';
 import LiveMoneyAndShops from '@/components/LiveMoneyAndShops';
+import TripLiveMode from '@/components/TripLiveMode';
 import { attractionDataset } from '@/lib/attractions';
 import {
   Attraction, Booking, ChecklistItem, CountryName, Expense, getAll, HotelStay,
@@ -169,6 +170,7 @@ export default function Home() {
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [newChecklistTitle, setNewChecklistTitle] = useState('');
+  const [liveMode, setLiveMode] = useState(false);
 
   async function refresh() {
     // Private documents are deliberately excluded from normal app hydration. They are fetched
@@ -723,7 +725,7 @@ export default function Home() {
       <span className="eyebrow">21 AUGUST — 4 SEPTEMBER 2026</span><h2>One journey.<br/><em>Zero chaos.</em></h2>
       <p>Documents, detailed country budgets, hotels, airport transfers, attractions and every booking—available offline.</p>
       <div className="date-pill"><CalendarDaysIcon/><b>15 days</b><span>Sharjah → Malaysia → Singapore → Indonesia → Abu Dhabi</span></div>
-      <div className="hero-actions"><button className="primary" onClick={() => setShowAdd(true)}><PlusIcon/> Add trip item</button><button className="secondary" onClick={() => setTab('documents')}><FolderIcon/> Traveler folders</button></div>
+      <div className="hero-actions"><button className="primary live-launch" onClick={() => setLiveMode(true)}><SparklesIcon/> Launch Live Mode</button><button className="secondary" onClick={() => setShowAdd(true)}><PlusIcon/> Add trip item</button><button className="secondary" onClick={() => setTab('documents')}><FolderIcon/> Traveler folders</button></div>
     </motion.div>
     <motion.div className="boarding-pass" initial={{ opacity: 0, rotate: 4, x: 40 }} animate={{ opacity: 1, rotate: -2, x: 0 }} whileHover={{ rotate: 0, scale: 1.02 }}>
       <div className="pass-notch pass-notch-left"/><div className="pass-notch pass-notch-right"/>
@@ -743,6 +745,8 @@ export default function Home() {
       <div className="sgac-copy"><div className="sgac-title-row"><b>Singapore Arrival Card (SGAC)</b><span>{sgacSubmitted ? 'SUBMITTED' : sgacIsOpen ? 'SUBMIT NOW' : `OPENS ${sgacWindowLabel.toUpperCase()}`}</span></div><p>{sgacSubmitted ? `Marked complete for your ${sgacArrivalLabel} Singapore arrival.` : sgacIsOpen ? `Your valid SGAC submission window is open. Submit it before arriving in Singapore on ${sgacArrivalLabel} to avoid immigration delays.` : `For your ${sgacArrivalLabel} Singapore arrival, submit the SGAC from ${sgacWindowLabel} through arrival day. TripDeck will alert you when the window opens.`}</p><small>Official Singapore ICA service · submission is free</small></div>
       <div className="sgac-actions"><button className="secondary small" onClick={openOfficialSgac}>Open official SGAC</button>{!sgacSubmitted && <button className="primary small" onClick={markSgacSubmitted}><CheckCircleIcon/> Mark submitted</button>}</div>
     </section>
+
+    {liveMode && <TripLiveMode bookings={bookings} itinerary={items} hotels={hotels} now={now} onClose={() => setLiveMode(false)} onOpenBookings={() => { setLiveMode(false); setTab('bookings'); }} onOpenItinerary={() => { setLiveMode(false); setTab('itinerary'); }} onOpenDocuments={() => { setLiveMode(false); setTab('documents'); }} onOpenStays={() => { setLiveMode(false); setTab('stays'); }}/>}
 
     <nav className="tabs glass">{(['overview', 'smart', 'explorer', 'food', 'nearby', 'bookings', 'itinerary', 'documents', 'expenses', 'stays', 'toolkit'] as Tab[]).map(t => <button key={t} onClick={() => setTab(t)} className={tab === t ? 'active' : ''}>{t}</button>)}</nav>
 
@@ -848,12 +852,27 @@ function ExpenseCenter({country,setCountry,expenses,onRefresh}:{country:CountryN
  const categories=Object.entries(rows.reduce<Record<string,number>>((a,e)=>(a[e.category]=(a[e.category]||0)+localValue(e),a),{})).sort((a,b)=>b[1]-a[1]);
  const payers=TRAVELERS.map(name=>({name,total:rows.filter(e=>e.paidBy===name).reduce((a,e)=>a+localValue(e),0)}));
  const shares=TRAVELERS.map(name=>({name,total:rows.reduce((sum,e)=>sum+(e.splitShares?.[name]||0),0),aed:rows.reduce((sum,e)=>{const localShare=e.splitShares?.[name]||0;return sum+(e.localAmount&&e.aedAmount?localShare*(e.aedAmount/e.localAmount):0)},0)}));
+ const settlementBalances = COUNTRY_TRAVELERS[country].map(name => ({ name, balance: rows.reduce((sum,e) => {
+   const aed = e.aedAmount ?? (e.currency === 'AED' ? e.amount : 0);
+   if (!aed) return sum;
+   const split = e.splitWith?.length ? e.splitWith : [e.paidBy];
+   const share = split.includes(name) ? aed / split.length : 0;
+   const paid = e.paidBy === name ? aed : 0;
+   return sum + paid - share;
+ }, 0) }));
+ const settlementTransfers = (() => {
+   const creditors = settlementBalances.filter(x=>x.balance>.01).map(x=>({...x})).sort((a,b)=>b.balance-a.balance);
+   const debtors = settlementBalances.filter(x=>x.balance<-.01).map(x=>({...x,balance:-x.balance})).sort((a,b)=>b.balance-a.balance);
+   const result:{from:TravelerName;to:TravelerName;amount:number}[]=[]; let i=0,j=0;
+   while(i<debtors.length&&j<creditors.length){const amount=Math.min(debtors[i].balance,creditors[j].balance);if(amount>.01)result.push({from:debtors[i].name as TravelerName,to:creditors[j].name as TravelerName,amount});debtors[i].balance-=amount;creditors[j].balance-=amount;if(debtors[i].balance<.01)i++;if(creditors[j].balance<.01)j++;}
+   return result;
+ })();
  const filtered=rows.filter(e=>(category==='All'||e.category===category)&&`${e.title} ${e.merchant||''} ${e.notes||''}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
  return <div className="expense-center"><div className="section-heading"><div><span className="eyebrow">COUNTRYWISE BUDGET CONTROL</span><h3>Expenses & group settlement</h3><p className="muted">Track spending, AED conversions, payment methods and each traveler&apos;s share.</p></div><label className="budget-control"><span>{country} trip budget</span><div><b>{currency}</b><input type="number" min="0" value={budget||''} placeholder="Set budget" onChange={e=>{const v=Number(e.target.value);setBudget(v);localStorage.setItem(`tripdeck-budget-${country}`,String(v))}}/></div></label></div>
  <div className="country-switch">{countries.map(c=><button key={c.code} className={country===c.name?'active':''} onClick={()=>setCountry(c.name)}>{c.code}<span>{c.name}</span></button>)}</div>
  <div className="expense-kpis"><div className="glass"><span>Total spent</span><b>{currency} {total.toLocaleString(undefined,{maximumFractionDigits:2})}</b><small>{aedTotal?`AED ${aedTotal.toLocaleString(undefined,{maximumFractionDigits:2})}`:`${rows.length} transactions`}</small></div><div className="glass"><span>Budget remaining</span><b className={remaining<0?'over':''}>{budget?`${currency} ${remaining.toLocaleString(undefined,{maximumFractionDigits:2})}`:'Set a budget'}</b><small>{budget?`${Math.min(100,Math.round(total/budget*100))}% used`:'Add a target above'}</small></div><div className="glass"><span>Average per traveler</span><b>{currency} {perPerson.toLocaleString(undefined,{maximumFractionDigits:2})}</b><small>{travelerCount} travelers in {country}</small></div><div className="glass"><span>Largest category</span><b>{categories[0]?.[0]||'No data'}</b><small>{categories[0]?`${currency} ${categories[0][1].toLocaleString()}`:'Start logging expenses'}</small></div></div>
  {budget>0&&<div className="budget-progress"><span style={{width:`${Math.min(100,total/budget*100)}%`}}/></div>}
- <div className="expense-layout upgraded"><section className="panel glass"><div className="panel-title"><h3>Log an expense</h3><CurrencyDollarIcon/></div><ExpenseForm country={country} onSaved={onRefresh}/></section><section className="panel glass"><div className="panel-title"><h3>Group accounts</h3><BanknotesIcon/></div><h4 className="settlement-title">Each traveler&apos;s allocated share</h4><div className="payer-grid">{shares.map(p=><div key={p.name}><span>{p.name}</span><b>{currency} {p.total.toLocaleString(undefined,{maximumFractionDigits:2})}</b>{p.aed>0&&<small>AED {p.aed.toLocaleString(undefined,{maximumFractionDigits:2})}</small>}</div>)}</div><h4 className="settlement-title">Paid by</h4><div className="payer-grid">{payers.map(p=><div key={p.name}><span>{p.name}</span><b>{currency} {p.total.toLocaleString(undefined,{maximumFractionDigits:2})}</b></div>)}</div></section></div>
+ <div className="expense-layout upgraded"><section className="panel glass"><div className="panel-title"><h3>Log an expense</h3><CurrencyDollarIcon/></div><ExpenseForm country={country} onSaved={onRefresh}/></section><section className="panel glass"><div className="panel-title"><h3>Group accounts</h3><BanknotesIcon/></div><h4 className="settlement-title">Each traveler&apos;s allocated share</h4><div className="payer-grid">{shares.map(p=><div key={p.name}><span>{p.name}</span><b>{currency} {p.total.toLocaleString(undefined,{maximumFractionDigits:2})}</b>{p.aed>0&&<small>AED {p.aed.toLocaleString(undefined,{maximumFractionDigits:2})}</small>}</div>)}</div><h4 className="settlement-title">Paid by</h4><div className="payer-grid">{payers.map(p=><div key={p.name}><span>{p.name}</span><b>{currency} {p.total.toLocaleString(undefined,{maximumFractionDigits:2})}</b></div>)}</div><div className="smart-settlement"><div className="settlement-head"><div><span className="eyebrow">ONE-TAP SETTLE</span><h4>Minimum transfers</h4></div><SparklesIcon/></div>{settlementTransfers.length ? <div className="settlement-transfer-list">{settlementTransfers.map((t,i)=><div key={`${t.from}-${t.to}-${i}`}><b>{t.from}</b><span>pays</span><strong>AED {t.amount.toFixed(2)}</strong><span>to</span><b>{t.to}</b></div>)}</div> : <p>{rows.length ? 'Everyone is settled for the expenses with AED conversion data.' : 'Log shared expenses and Trip Deck will calculate the smallest set of paybacks.'}</p>}</div></section></div>
  <div className="expense-toolbar"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search expense, merchant or note…"/><select value={category} onChange={e=>setCategory(e.target.value)}><option>All</option><option>Food</option><option>Transport</option><option>Hotel</option><option>Attraction</option><option>Shopping</option><option>Flights</option><option>Other</option></select></div>
  <LiveMoneyAndShops country={country} expenses={rows}/>
  <div className="expense-table modern">{filtered.length?filtered.map(e=><div className="expense-row" key={e.id}><div className="expense-category-icon">{e.category.slice(0,1)}</div><div><b>{e.title}</b><span>{e.category} · {e.merchant||'No merchant'} · paid by {e.paidBy}</span><small>{formatDate(e.date)}{e.paymentMethod?` · ${e.paymentMethod}`:''}{e.splitCount?` · split ${e.splitCount} ways`:''}</small>{e.splitWith?.length&&<small>Shared with: {e.splitWith.join(', ')}</small>}{e.notes&&<small>{e.notes}</small>}</div><strong>{e.currency} {e.amount.toFixed(2)}{e.aedAmount!=null&&<small>AED {e.aedAmount.toFixed(2)}</small>}</strong><button onClick={async()=>{await remove('expenses',e.id);await onRefresh()}}><TrashIcon/></button></div>):<Empty icon={<BanknotesIcon/>} title="No matching expenses" text="Log your first expense or clear the filters."/>}</div></div>
